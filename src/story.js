@@ -171,8 +171,8 @@ async function youth() {
         await L.ink(K.frame(400, 330, 300, 360), { dur: 1600, opacity: .6 });
         await L.ink(K.ground(760, -100, 900, 4, 2), { dur: 800 });
         const d = L.g(); pivot(d, 400, 640);
-        await L.ink(K.person(400, 760, { kind: 'adult', h: 290, hair: 'bun', arm: 'up', part: 'body' }), { parent: d, dur: 2000 });
-        await L.ink([{ p: [[386, 682], [390, 720], [394, 760]], w: 1.9 }, { p: [[414, 684], [470, 666], [530, 612]], w: 1.9 }], { parent: d, dur: 900 });
+        await L.ink(K.person(400, 760, { kind: 'adult', h: 290, hair: 'bun', arm: 'reach', part: 'body' }), { parent: d, dur: 2000 });
+        await L.ink([{ p: [[412, 682], [413, 720], [414, 760], [426, 761]], w: 1.9 }, { p: [[388, 684], [340, 660], [282, 618]], w: 1.9 }], { parent: d, dur: 900 });
         await L.taps(400, 560, 3, async k => { A.note(68 + k * 4, .12); await L.move(d, 0, 0, 900, 'ease-in-out', [-8, 6, 0][k]); }, { r: 40, label: 'dance' });
       } else {
         await L.ink(K.desk(400, 660), { dur: 1200 });
@@ -656,12 +656,12 @@ async function oldAge() {
       A.music(4);
       gap(0); seam(.25);
       await all(
-        L.ink([{ p: [[800, 300], [700, 300], [700, 600], [800, 600]], w: 1.8 }], { dur: 1400 }),
-        R.ink([{ p: [[0, 300], [100, 300], [100, 600], [0, 600]], w: 1.8 }], { dur: 1400 }),
+        L.ink([{ p: [[800, 300], [742, 300], [742, 600], [800, 600]], w: 1.8, l: 1 }], { dur: 1400 }),
+        R.ink([{ p: [[0, 300], [58, 300], [58, 600], [0, 600]], w: 1.8, l: 1 }], { dur: 1400 }),
       );
       L.setWeatherKind('gold'); R.setWeatherKind('gold');
       await all(L.washTo('gold', .9, 5000), R.washTo('gold', .9, 5000));
-      await all(L.ink([{ p: [[688, 498], [712, 440], [722, 396]], w: 1.8 }], { dur: 900 }), R.ink([{ p: [[112, 494], [90, 440], [80, 396]], w: 1.8 }], { dur: 900 }));
+      await all(L.ink([{ p: [[678, 534], [700, 470], [708, 410]], w: 1.8 }], { dur: 900 }), R.ink([{ p: [[122, 530], [100, 470], [92, 410]], w: 1.8 }], { dur: 900 }));
       A.chord(.12);
       await sleep(6000);
     } else {
