@@ -49,7 +49,16 @@ async function end() {
   location.reload(); // nothing to restore. it begins again.
 }
 
+const SCENE = new URLSearchParams(location.search).get('scene');
 (async () => {
+  if (SCENE) {
+    both.classList.add('on'); stage.style.setProperty('--seam', 0);
+    if (!AUTO) await B.tap(400, 450, 26, { label: 'begin', silent: true });
+    A.init();
+    const mod = await import(`./scene_${SCENE}.js`);
+    await mod[SCENE + 'Scene'](B);
+    window.__done = true; return;
+  }
   try {
     await title();
     await play({ L, R, B }, card);

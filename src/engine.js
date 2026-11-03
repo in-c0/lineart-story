@@ -1,5 +1,6 @@
 // Stage, hand-drawn ink and the small set of interactions the game uses.
 import * as A from './audio.js';
+import { sample, outline, centre } from './brush.js';
 
 export const NS = 'http://www.w3.org/2000/svg';
 const Q = new URLSearchParams(location.search);
@@ -52,6 +53,12 @@ export function arc(cx, cy, rx, ry, a0 = 0, a1 = 360, step = 24) {
   return out;
 }
 
+let maskN = 0;
+function linSample(pts, closed) {
+  const P = closed ? pts.concat([pts[0]]) : pts, out = [];
+  for (let i = 0; i < P.length - 1; i++) { const [x0, y0] = P[i], [x1, y1] = P[i + 1]; const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0) / 12)); for (let k = 0; k < n; k++) out.push([x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n]); }
+  out.push(P[P.length - 1]); return out;
+}
 export function el(tag, attrs = {}, parent) {
   const e = document.createElementNS(NS, tag);
   for (const k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
@@ -69,9 +76,11 @@ export class Pane {
     this.host = host;
     this.svg = el('svg', { viewBox: '0 0 800 900', preserveAspectRatio: 'xMidYMid meet' }, host);
     const defs = el('defs', {}, this.svg);
+    this.defs = defs;
+    this.measure = el('g', { visibility: 'hidden' }, defs);
     this.turb = el('feTurbulence', { type: 'fractalNoise', baseFrequency: '.018', numOctaves: 2, seed: 1 },
       el('filter', { id: 'wob' + name, x: '-5%', y: '-5%', width: '110%', height: '110%' }, defs));
-    el('feDisplacementMap', { in: 'SourceGraphic', scale: 2.6 }, this.turb.parentNode);
+    el('feDisplacementMap', { in: 'SourceGraphic', scale: 1.6 }, this.turb.parentNode);
     const gr = el('radialGradient', { id: 'gold' + name, cx: '50%', cy: '62%', r: '75%' }, defs);
     el('stop', { offset: '0', 'stop-color': '#f4c27a', 'stop-opacity': '.85' }, gr);
     el('stop', { offset: '.55', 'stop-color': '#efcf9c', 'stop-opacity': '.35' }, gr);
@@ -98,18 +107,46 @@ export class Pane {
     const list = typeof strokes === 'string' ? [{ d: strokes }] : strokes;
     const per = list.length > 1 ? dur / (1 + (list.length - 1) * (1 - stagger)) : dur;
     const step = per * (1 - stagger);
+    const pen = !!o.pen;
+    if (!pen) g.style.opacity = 0;
     const anims = list.map((s, i) => {
+      const sw = s.w || w;
+      const timing = { duration: T(per), delay: T(i * step + (o.delay || 0)), easing: ease, fill: 'forwards' };
+      // brush stroke: a filled, tapered body; with pen:true it is revealed along its centre line
+      if (s.p && !(s.fill || fill) && !o.flat) {
+        const j = s.j ?? .7;
+        const raw = s.p.map(([x, y]) => [x + jit(j), y + jit(j)]);
+        const dense = s.l ? linSample(raw, s.c) : sample(raw, s.c, 7);
+        const body = outline(dense, sw, { closed: s.c, a: s.a ?? .12, b: s.b ?? .4, ph: rand() * 6, amp: .15 });
+        const b = el('path', { d: body, class: 'brush' + (white ? ' w' : '') }, g);
+        if (s.o != null) b.setAttribute('opacity', s.o);
+        if (s.col) b.style.fill = s.col;
+        if (!pen) return Promise.resolve();
+        const id = 'm' + this.name + (++maskN);
+        const m = el('mask', { id, maskUnits: 'userSpaceOnUse', x: -3000, y: -3000, width: 7000, height: 7000 }, this.defs);
+        const mp = el('path', { d: centre(dense), fill: 'none', stroke: '#fff', 'stroke-width': sw * 3 + 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', pathLength: 1 }, m);
+        mp.style.strokeDasharray = '1 1'; mp.style.strokeDashoffset = 1;
+        b.setAttribute('mask', `url(#${id})`);
+        const a = mp.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], timing);
+        a.onfinish = () => { b.removeAttribute('mask'); m.remove(); a.cancel(); };
+        return a.finished.catch(() => {});
+      }
       const d = s.d || (s.l ? lin(s.p, s.c, s.j ?? .7) : curve(s.p, s.c, s.j ?? .7));
-      const p = el('path', { d, class: 'ink' + (white ? ' w' : ''), 'stroke-width': s.w || w, pathLength: 1 }, g);
+      const p = el('path', { d, class: 'ink' + (white ? ' w' : ''), 'stroke-width': sw, pathLength: 1 }, g);
       if (s.o != null) p.setAttribute('opacity', s.o);
       if (s.fill || fill) { p.style.fill = s.fill || fill; p.style.fillOpacity = 0; }
       if (s.col) p.style.stroke = s.col;
       p.style.strokeDasharray = '1 1';
       p.style.strokeDashoffset = 1;
-      const a = p.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: T(per), delay: T(i * step + (o.delay || 0)), easing: ease, fill: 'forwards' });
+      const a = p.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], timing);
       a.onfinish = () => { p.style.strokeDasharray = ''; p.style.strokeDashoffset = ''; a.cancel(); if (p.style.fill) p.animate([{ fillOpacity: 0 }, { fillOpacity: s.fo ?? .9 }], { duration: T(700), fill: 'forwards' }); };
       return a.finished.catch(() => {});
     });
+    if (!pen) {
+      const fa = g.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(Math.max(350, Math.min(900, dur * .45))), delay: T(o.delay || 0), fill: 'forwards', easing: 'ease-out' });
+      fa.finished.then(() => { g.style.opacity = ''; fa.cancel(); }).catch(() => {});
+      anims.push(fa.finished.catch(() => {}));
+    }
     if (wait) await Promise.all(anims);
     return g;
   }
@@ -118,6 +155,7 @@ export class Pane {
     if (!g || !g.isConnected) return;
     const ps = [...g.querySelectorAll('path')];
     await Promise.all(ps.map(p => {
+      if (p.classList.contains('brush')) return p.animate([{ opacity: p.getAttribute('opacity') ?? 1 }, { opacity: 0 }], { duration: T(dur), easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {});
       p.setAttribute('pathLength', 1); p.style.strokeDasharray = '1 1';
       return p.animate([{ strokeDashoffset: 0, fillOpacity: p.style.fill ? .9 : 0 }, { strokeDashoffset: -1, fillOpacity: 0 }], { duration: T(dur), easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {});
     }));
@@ -135,6 +173,18 @@ export class Pane {
     const a = g.animate([{ transform: `translate(${cur[0]}px,${cur[1]}px) rotate(${cur[2]}deg)` }, { transform: `translate(${x}px,${y}px) rotate(${rot}deg)` }], { duration: T(dur), easing: ease, fill: 'forwards' });
     g._pos = [x, y, rot];
     await a.finished.catch(() => {});
+  }
+  // the camera is the viewBox. x,y,w,h in scene units; eases between framings
+  camera(x, y, w, h, ms = 2000) {
+    const vb = (this.svg.getAttribute('viewBox') || '0 0 800 900').split(' ').map(Number);
+    const to = [x, y, w, h];
+    if (this._cam) cancelAnimationFrame(this._cam);
+    if (!ms) { this.svg.setAttribute('viewBox', to.join(' ')); this.inkScale = Math.min(1, (w / 800) ** .7); return Promise.resolve(); }
+    const t0 = performance.now(), D2 = T(ms);
+    return new Promise(res => {
+      const st = now => { const k = Math.max(0, Math.min(1, (now - t0) / D2)), e = k < .5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2; const cur = vb.map((v, i) => v + (to[i] - v) * e); this.svg.setAttribute('viewBox', cur.join(' ')); this.inkScale = Math.min(1, (cur[2] / 800) ** .7); if (k < 1) this._cam = requestAnimationFrame(st); else res(); };
+      this._cam = requestAnimationFrame(st);
+    });
   }
   async clear(dur = 1400) {
     const kids = [...this.root.children, ...this.over.children];
@@ -201,16 +251,27 @@ export class Pane {
   }
 
   // ---------- interactions ----------
-  _cue(x, y, r, white) {
+  _cue(x, y, r, white, target) {
     const hit = el('circle', { cx: x, cy: y, r: Math.max(r, 44), class: 'hit', tabindex: 0, role: 'button' }, this.ui);
-    const cue = el('circle', { cx: x, cy: y, r, class: 'cue' + (white || this.isDark ? ' w' : '') }, this.ui);
-    if (firstCue) { firstCue = false; ripple(this, x, y, r, white || this.isDark); }
+    const cue = el('g', {}, this.ui);
+    const w = white || this.isDark;
+    let breathe;
+    if (target) { target.style.transformBox = 'fill-box'; target.style.transformOrigin = 'center'; breathe = target.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.035)' }, { transform: 'scale(1)' }], { duration: 2400, iterations: Infinity, easing: 'ease-in-out' }); }
+    const ring = () => { if (!hit.isConnected) return; const c = el('circle', { cx: x, cy: y, r: r * .5, fill: 'none', stroke: w ? '#f2efe8' : '#1c1b19', 'stroke-width': 1, opacity: 0, 'pointer-events': 'none' }, cue); c.animate([{ r: r * .5, opacity: .45 }, { r: r * 1.6, opacity: 0 }], { duration: 1800, easing: 'ease-out' }).finished.then(() => c.remove()); };
+    // first time ever: show where at once. after that, only when the player seems lost
+    const first = firstCue; firstCue = false;
+    const timers = [setTimeout(ring, first ? 500 : 7000)];
+    const iv = setInterval(ring, first ? 2600 : 5200);
+    timers.push(setTimeout(() => {}, 0));
+    const stop = () => { timers.forEach(clearTimeout); clearInterval(iv); breathe && breathe.cancel(); };
+    hit.addEventListener('pointerdown', stop, { once: true });
+    const obs = new MutationObserver(() => { if (!hit.isConnected) { stop(); obs.disconnect(); } }); obs.observe(this.ui, { childList: true });
     return { hit, cue, x, y, r };
   }
   // wait for one tap at (x,y). label is for screen readers only
   tap(x, y, r = 40, o = {}) {
     return new Promise(res => {
-      const c = this._cue(x, y, r, o.white);
+      const c = this._cue(x, y, r, o.white, o.target);
       if (o.label) c.hit.setAttribute('aria-label', o.label);
       const done = e => { e && e.preventDefault(); cleanup(); if (!o.silent) A.tapNote(); res(); };
       const key = e => { if (e.key === 'Enter' || e.key === ' ') done(e); };
@@ -225,7 +286,7 @@ export class Pane {
   // two or more targets; returns the chosen index (or -1 on timeout)
   choose(opts, o = {}) {
     return new Promise(res => {
-      const cs = opts.map(([x, y, r = 46, label]) => { const c = this._cue(x, y, r); if (label) c.hit.setAttribute('aria-label', label); return c; });
+      const cs = opts.map(([x, y, r = 46, label, target]) => { const c = this._cue(x, y, r, false, target); if (label) c.hit.setAttribute('aria-label', label); return c; });
       let over = false;
       const pick = i => { if (over) return; over = true; cs.forEach(c => { c.hit.remove(); c.cue.remove(); }); if (i >= 0) A.tapNote(); res(i); };
       cs.forEach((c, i) => {
@@ -252,7 +313,7 @@ export class Pane {
       const finish = async () => {
         if (finished) return; finished = true; c.hit.remove(); c.cue.remove(); window.removeEventListener('pointermove', mv);
         const from = t, t0 = performance.now(), D = T(900 * (1 - from) + 100);
-        await new Promise(r2 => { const st = now => { const k = Math.min(1, (now - t0) / D); onMove(from + (1 - from) * (1 - (1 - k) ** 3)); k < 1 ? requestAnimationFrame(st) : r2(); }; requestAnimationFrame(st); });
+        await new Promise(r2 => { const st = now => { const k = Math.max(0, Math.min(1, (now - t0) / D)); onMove(from + (1 - from) * (1 - (1 - k) ** 3)); k < 1 ? requestAnimationFrame(st) : r2(); }; requestAnimationFrame(st); });
         A.tapNote(); res();
       };
       const mv = e => { if (!active) return; const [px, py] = toLocal(e); set(((px - x) * vx + (py - y) * vy) / L2); if (t > .92) finish(); };
@@ -282,6 +343,3 @@ function ripple(p, x, y, r, white) {
 let last = performance.now();
 function loop(now) { const dt = Math.min(50, now - last) / 16.7; last = now; for (const p of Pane.all) p.tickWeather(dt); requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
-// boil the lines: change turbulence seed a few times a second
-let s = 1;
-setInterval(() => { s = (s % 4) + 1; for (const p of Pane.all) p.turb.setAttribute('seed', s); }, 150);

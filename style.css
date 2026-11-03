@@ -46,12 +46,14 @@ body { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user
 .cue { fill: none; stroke: var(--ink); stroke-width: 1.1; stroke-dasharray: 3 7; opacity: .55; transform-box: fill-box; transform-origin: center; animation: spin 14s linear infinite, breathe 2.6s ease-in-out infinite; pointer-events: none; }
 .cue.w { stroke: #f2efe8; }
 .hit { fill: transparent; cursor: pointer; outline: none; }
-.hit:focus-visible + .cue { stroke-width: 2; opacity: .9; }
+.hit:focus-visible { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 4; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes breathe { 0%,100% { opacity: .25; } 50% { opacity: .7; } }
 
 .ink { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; }
 .ink.w { stroke: #f2efe8; }
+.brush { fill: var(--ink); stroke: none; }
+.brush.w { fill: #f2efe8; }
 
 #start { cursor: pointer; }
 

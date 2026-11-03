@@ -45,3 +45,23 @@ Common patterns applied:
 
 The epilogue draws the branching life paths (paths closed vs open) with the taken path in light,
 and hangs the polaroids collected along the way.
+
+## Playtest round 1 (ChatGPT as playtester)
+Verdict on v1: "an interactive diagram of life events, not a short animated film about a life."
+What changed in v2, in the order it ranked them:
+1. **Bodies** — geometric figures replaced by a jointed rig (shoulder, elbow, hip, knee, two-bone IK)
+   drawn as tapered brush strokes with hair strands, a soft spine curve and a shoulder that leads a reach.
+   No per-frame line boiling; each line's imperfection is fixed.
+2. **Weight and hesitation** — walks are a gait cycle tied to distance (pelvis bob, eased start/stop,
+   child at a shorter stride half a beat behind). Touches go approach → pause → contact.
+3. **No UI** — the rotating dashed ring and the branching-path choice diagram are gone. You touch
+   things in the scene (a finger, a ball, ballet shoes or books, a dog or a bag, a door or a cup).
+   The touched thing breathes; a faint ripple appears only after a long idle.
+4. **One recurring gesture** — two cups set down on a table: together, then one left cold while
+   waiting, and at the very end one person sets out two cups and puts one back.
+5. **Edit** — fades instead of pen-drawing every scene, camera framing per shot (wide / medium /
+   close-up on hands), silence around each loss, no closing text.
+
+The swing scene was rebuilt first and re-tested three times: shorter ropes so the arc reads,
+the body follows the swing a beat late, she reaches, misses and drops her head, he looks up too late,
+then a close shot for the touch.

@@ -1,7 +1,9 @@
-// The life. Two halves (L, R), sometimes one shared frame (B).
+// The life, rebuilt around bodies and one recurring gesture: hands, and two cups on a table.
 import { sleep, T, el, rand } from './engine.js';
 import * as K from './shapes.js';
 import * as A from './audio.js';
+import { Figure, POSES } from './rig.js';
+import { swingScene } from './scene_swing.js';
 
 let L, R, B;
 const stage = document.getElementById('stage');
@@ -9,303 +11,277 @@ const bothEl = document.getElementById('both');
 // what the player decided. nothing here is ever saved.
 export const S = { dream: null, place: null, awayA: false, awayB: false, mother: null, accident: false, woke: null, photos: [] };
 const all = (...p) => Promise.all(p);
-
-function seam(v) { stage.style.setProperty('--seam', v); }
-function gap(n) { stage.style.setProperty('--gap', n * 18 + 'px'); stage.style.setProperty('--twin', n ? 'block' : 'none'); }
+const seam = v => stage.style.setProperty('--seam', v);
+const gap = n => { stage.style.setProperty('--gap', n * 18 + 'px'); stage.style.setProperty('--twin', n ? 'block' : 'none'); };
 const distance = () => (S.awayA ? 1 : 0) + (S.awayB ? 1 : 0);
-async function merge() {
-  await all(L.clear(900), R.clear(900));
-  gap(0); seam(0); bothEl.classList.add('on'); await sleep(1300);
-}
-async function split(n = distance()) {
-  await B.clear(1100); bothEl.classList.remove('on'); seam(1); gap(n); await sleep(900);
-}
-
-// ---------- figure helpers ----------
-async function fig(p, x, y, o = {}, dur = 2000) { const g = p.g(); await p.ink(K.person(x, y, o), { parent: g, dur, white: o.white }); return g; }
-async function walker(p, x, y, o = {}, dur = 1800) {
-  const g = p.g();
-  await p.ink(K.person(x, y, { ...o, part: 'body' }), { parent: g, dur });
-  const l0 = await p.ink(K.person(x, y, { ...o, pose: 'walk0', part: 'legs' }), { parent: g, dur: 500 });
-  const l1 = await p.ink(K.person(x, y, { ...o, pose: 'walk1', part: 'legs' }), { parent: g, dur: 30 });
-  l1.setAttribute('opacity', 0);
-  g.x = x; g.y = y;
-  g.walk = async (dx, ms, prints) => {
-    let k = 0, side = 0;
-    const iv = setInterval(() => { k ^= 1; l0.setAttribute('opacity', k ? 0 : 1); l1.setAttribute('opacity', k ? 1 : 0); }, T(340));
-    const t0 = performance.now(), x0 = g.x;
-    const pv = prints && setInterval(() => {
-      const kk = Math.min(1, (performance.now() - t0) / T(ms)); const cx = x0 + dx * kk; side ^= 1;
-      p.ink(K.footprint(cx + (side ? -7 : 7) * (o.h || 300) / 300, y + 10 + (side ? 0 : 6), (o.h || 300) / 300 * .8), { parent: prints, dur: 200, w: 1.1 });
-    }, T(340));
-    await p.move(g, (g._pos?.[0] || 0) + dx, 0, ms, 'linear');
-    g.x += dx; clearInterval(iv); pv && clearInterval(pv);
-    l0.setAttribute('opacity', 1); l1.setAttribute('opacity', 0);
-  };
-  return g;
-}
-function pivot(g, x, y) { g.style.transformBox = 'view-box'; g.style.transformOrigin = `${x}px ${y}px`; }
-async function flash(p) { const r = el('rect', { x: -1600, y: -1200, width: 4000, height: 3300, fill: '#fffdf6', opacity: 0, 'pointer-events': 'none' }, p.ui); A.shutter(); await r.animate([{ opacity: 0 }, { opacity: .95, offset: .15 }, { opacity: 0 }], { duration: T(900) }).finished; r.remove(); }
+const WIDE = [0, 0, 800, 900];
+const cam = (p, v = WIDE, ms = 0) => p.camera(...v, ms);
+async function merge() { await all(L.clear(600), R.clear(600)); gap(0); seam(0); bothEl.classList.add('on'); cam(B); await sleep(900); }
+async function split(n = distance()) { await B.clear(700); bothEl.classList.remove('on'); seam(1); gap(n); cam(L); cam(R); await sleep(600); }
+const fig = (p, o) => { const F = new Figure(p, { ...o, hidden: true }); F.show(o.fade ?? 700); return F; };
+const prints = (p, snow = true) => { const g = p.g(); return (A2, F) => { A.footstep(snow); p.ink(K.footprint(A2[0] + F.p.f * F.h * .03, A2[1] + F.h * .03, F.h / 320, 0), { parent: g, dur: 200, w: 1.1 }); }; };
+// hold two figures' hands while they walk: both reach to a point between them
+const linkHands = (a, b, drop = .33) => () => {
+  const sa = a.shoulder(), sb = b.shoulder();
+  const pt = [(sa[0] + sb[0]) / 2, Math.max(sa[1], sb[1]) + a.h * drop * .62];
+  a.p.handN = pt; b.p.handN = pt;
+};
 
 // ================== episodes ==================
 async function birth() {
   A.music(1);
-  await all(
-    (async () => {
-      L.weatherOn('snow', 60, [-100, 900]);
-      await L.ink(K.ground(700), { dur: 1600 });
-      await L.ink(K.house(400, 700), { dur: 2600 });
-      await sleep(700);
-      await L.tap(400, 647, 38, { label: 'window' });
-      await L.ink(K.windowGlow(400, 700), { dur: 400 });
-      A.note(83, .1, 4);
-      await sleep(2600);
-      await L.clear(1400);
-      await L.ink(K.baby(470, 470, 2.2), { dur: 2000 });
-      await L.ink(K.hand(380, 560, 1.1), { dur: 1600 });
-      await L.tap(350, 556, 32, { label: 'tiny hand' });
-      await L.ink(K.tinyHand(350, 556, 1.1), { dur: 700 });
-      A.heartbeat(.25); await sleep(2400);
-      S.photos.push('window');
-    })(),
-    (async () => {
-      A.sea(true);
-      await R.ink(K.sea(640, -100, 900), { dur: 2200 });
-      const sunG = R.g(); await R.ink([{ p: K.sun(400, 640, 50)[0].p.filter(([, y]) => y <= 641), w: 1.8 }], { parent: sunG, dur: 1400 });
-      await sleep(800);
-      await R.tap(400, 616, 44, { label: 'sun' });
-      await R.ink([{ p: K.sun(400, 640, 50)[0].p.filter(([, y]) => y >= 638), w: 1.8 }], { parent: sunG, dur: 600 });
-      R.move(sunG, 0, -190, 4200, 'ease-out');
-      R.washTo('gold', .35, 4200);
-      await sleep(900); await R.ink(K.birds(520, 330), { dur: 900 });
-      await sleep(2600);
-      await R.clear(1400); A.sea(false);
-      await R.ink(K.baby(330, 470, 2.2), { dur: 2000 });
-      await R.ink(K.hand(420, 560, 1.1, true), { dur: 1600 });
-      await R.tap(450, 556, 32, { label: 'tiny hand' });
-      await R.ink(K.tinyHand(450, 556, 1.1, true), { dur: 700 });
-      A.heartbeat(.25); await sleep(2400);
-    })(),
-  );
-  await all(L.clear(), R.clear());
+  let gripped;
+  const grip = new Promise(r => gripped = r);
+  const side = async (p, left) => {
+    // where: a lit window in the snow, or a sun coming up over water
+    if (left) {
+      p.weatherOn('snow', 60, [-100, 900]); cam(p, [100, 380, 600, 480]);
+      await p.ink([...K.ground(700), ...K.house(400, 700)], { dur: 900 });
+      await sleep(1500); await p.ink(K.windowGlow(400, 700), { dur: 300 }); A.note(83, .07, 4);
+    } else {
+      A.sea(true); cam(p, [100, 380, 600, 480]);
+      await p.ink([...K.sea(640, -100, 900), ...K.sun(400, 610, 40)], { dur: 900 });
+      p.washTo('gold', .35, 3500); await sleep(800); await p.ink(K.birds(520, 470), { dur: 700, pen: true });
+    }
+    await sleep(2200);
+    // cut to the first thing they hold
+    await p.clear(500); if (!left) A.sea(false); cam(p);
+    const hand = await p.ink(K.hand(left ? 380 : 420, 560, 1.1, !left), { dur: 700 });
+    await p.ink(K.baby(left ? 470 : 330, 470, 2.2), { dur: 700 });
+    if (left) { await sleep(600); await p.tap(350, 556, 34, { label: 'the finger', target: hand }); gripped(); }
+    else await grip;
+    await p.ink(K.tinyHand(left ? 350 : 450, 556, 1.1, !left), { dur: 900, pen: true });
+    A.heartbeat(.2); await sleep(2600);
+  };
+  await all(side(L, true), side(R, false));
+  S.photos.push('window');
+  await all(L.clear(700), R.clear(700));
 }
 
 async function childhood() {
   await all(
     (async () => {
+      // mother and child in the snow, the child half a step behind
       L.weatherOn('snow', 70, [-100, 900]);
-      await L.ink(K.ground(712), { dur: 1400 });
-      const prints = L.g();
-      for (let i = 0; i < 6; i++) { const x = 20 + i * 48; L.ink([...K.footprint(x, 722 + (i % 2) * 8, 1), ...K.footprint(x + 60, 718 + (i % 2) * 6, .6)], { parent: prints, dur: 240, w: 1.1 }); await sleep(260); }
-      const mom = await walker(L, 340, 700, { kind: 'adult', hair: 'bun' }, 2200);
-      const kid = await walker(L, 440, 700, { kind: 'child', h: 150, hair: 'long' }, 1600);
-      await sleep(600);
-      await L.tap(414, 612, 32, { label: 'hold hands' });
-      const link = L.g(); await L.ink([{ p: [[376, 578], [398, 606], [418, 630], [429, 650]], w: 1.8 }], { parent: link, dur: 600 });
-      A.note(76, .1);
-      await sleep(900);
-      await all(mom.walk(520, 7200, prints), kid.walk(520, 7200, prints), L.move(link, 520, 0, 7200, 'linear'));
+      await L.ink(K.ground(760, -100, 900, 6, 4), { dur: 600 });
+      const m = fig(L, { x: 60, y: 760, h: 300, hair: 'bun', clothes: 'coat' });
+      const k = fig(L, { x: 130, y: 760, h: 165, kind: 'child', hair: 'long', clothes: 'dress' });
+      const link = linkHands(m, k, .5);
+      link(); m.render(); k.render();
+      await sleep(700);
+      const fp = prints(L);
+      await all(m.walk(480, 9000, { onStep: link, onPlant: fp }), (async () => { await sleep(180); await k.walk(480, 9000, { short: true, onStep: link, onPlant: fp, phase: Math.PI * .5 }); })());
+      await sleep(1200);
       S.photos.push('hands');
     })(),
     (async () => {
-      await R.ink(K.ground(712), { dur: 1400 });
-      await R.ink(K.sun(640, 170, 34), { dur: 900 });
-      await R.ink(K.person(320, 700, { kind: 'child', h: 150, hair: 'short', arm: 'cup' }), { dur: 2000 });
-      const dog = R.g(); await R.ink(K.dog(470, 700, 1), { parent: dog, dur: 1800 });
-      const ball = R.g(); await R.ink(K.ball(348, 628), { parent: ball, dur: 500 });
-      await sleep(500);
-      await R.tap(348, 628, 30, { label: 'ball' });
-      A.tapNote();
-      R.move(ball, 150, -170, 900, 'ease-out').then(() => R.move(ball, 300, 70, 1000, 'ease-in'));
-      await sleep(500);
-      await R.move(dog, 170, 0, 1300, 'ease-in-out');
-      await sleep(500);
-      R.move(ball, 120, 0, 1400, 'ease-in-out');
-      await R.move(dog, 30, 0, 1400, 'ease-in-out');
-      A.chord(.08); await sleep(2600);
+      await R.ink([...K.ground(760, -100, 900, 6, 3), ...K.sun(650, 180, 30)], { dur: 600 });
+      const c = fig(R, { x: 290, y: 760, h: 165, kind: 'child', hair: 'short', clothes: 'coat', p: { sN: 40, eN: 40 } });
+      const dog = R.g(); await R.ink(K.dog(470, 760, 1.1, false), { parent: dog, dur: 600 });
+      const ball = R.g(); await R.ink(K.ball(326, 662), { parent: ball, dur: 500 });
+      await sleep(400);
+      await R.tap(326, 662, 30, { label: 'the ball', target: ball });
+      await c.to({ sN: -150, eN: 10, spine: -4 }, 260);
+      R.move(ball, 170, -230, 800, 'cubic-bezier(.2,.7,.4,1)').then(() => R.move(ball, 330, 98, 900, 'ease-in'));
+      c.to({ sN: -20, eN: 15, spine: 2 }, 900);
+      await sleep(350);
+      await R.move(dog, 190, 0, 1500, 'ease-in-out');
+      await sleep(300);
+      R.move(ball, 150, 82, 1500, 'ease-in-out');
+      await R.move(dog, 10, 0, 1500, 'ease-in-out');
+      await c.to({ sN: 30, eN: 60, spine: 12, neck: 14 }, 900);   // bends to the dog
+      await sleep(2200);
       S.photos.push('ball');
     })(),
   );
-  await all(L.clear(), R.clear());
+  await all(L.clear(700), R.clear(700));
 }
 
+// primary school graduation: a row of children, caps in the air. one of them, quieter.
 async function graduation() {
-  A.music(2);
-  const row = async (p, me, hairs, faint) => {
-    await p.ink(K.ground(712, -100, 900, 6, 3), { dur: 1000 });
-    const caps = [];
+  A.music(1.6);
+  const row = async (p, me, faint) => {
+    cam(p, [60, 380, 680, 460]);
+    await p.ink(K.ground(762, -100, 900, 6, 3), { dur: 500 });
+    const hairs = ['short', 'long', 'bun', 'short', 'long'];
+    const kids = [], caps = [];
     for (let i = 0; i < 5; i++) {
-      const x = 160 + i * 120, g = p.g();
-      await p.ink(K.person(x, 712, { kind: 'teen', h: 210, pose: 'bust', hair: hairs[i] }), { parent: g, dur: 900, opacity: i === faint ? .32 : 1 });
-      const c = p.g(); await p.ink(K.cap(x, 504, .9), { parent: c, dur: 400, opacity: i === faint ? .32 : 1 });
-      caps.push(c); if (i === faint) g._faint = c; if (i === faint) caps.faintBody = g;
+      const x = 170 + i * 115, h = 160 + (i * 37) % 22;
+      const F = fig(p, { x, y: 760, h, kind: 'child', hair: i === me ? (p === L ? 'long' : 'short') : hairs[i], clothes: i % 2 ? 'dress' : 'coat', fade: 500, p: { neck: 4 + i, spine: (i % 3) - 1 } });
+      kids.push(F);
+      const top = F.joints().H;
+      const c = p.g(); await p.ink(K.cap(top[0], top[1] - F.joints().L.headRy * .9, .6), { parent: c, dur: 300 }); caps.push(c);
+      if (i === faint) { F.g.style.opacity = .3; c.style.opacity = .3; }
     }
-    await sleep(500);
-    await p.tap(me, 504, 34, { label: 'cap' });
-    caps.forEach((c, i) => { pivot(c, 160 + i * 120, 504); p.move(c, (rand() - .5) * 120, -380 - rand() * 200, 2600 + i * 120, 'cubic-bezier(.2,.7,.3,1)', (rand() - .5) * 220); setTimeout(() => A.tapNote(.06), T(120 * i)); });
-    await sleep(2400);
-    caps.forEach(c => p.fade(c, 0, 1200));
-    await sleep(1200);
-    await p.fade(caps.faintBody, 0, 3200);
+    await sleep(1400);
+    kids.forEach((F, i) => setTimeout(() => F.to({ sN: -165, eN: 5 }, 300), T(i * 70)));
+    caps.forEach((c, i) => { c.style.transformBox = 'fill-box'; c.style.transformOrigin = 'center'; p.move(c, (rand() - .5) * 140, -430 - rand() * 160, 2600 + i * 110, 'cubic-bezier(.15,.7,.3,1)', (rand() - .5) * 260); });
     await sleep(1500);
+    kids.forEach(F => F.to({ sN: 4, eN: 8 }, 900));
+    caps.forEach(c => p.fade(c, 0, 1200));
+    await sleep(1600);
+    await kids[faint].g.animate([{ opacity: .3 }, { opacity: 0 }], { duration: T(2600), fill: 'forwards' }).finished;
+    await sleep(1600);
   };
-  await all(row(L, 400, ['long', 'short', 'long', 'bun', 'short'], 4), row(R, 400, ['short', 'long', 'short', 'short', 'long'], 0));
-  await all(L.clear(), R.clear());
+  await all(row(L, 2, 4), row(R, 2, 0));
+  await all(L.clear(700), R.clear(700));
 }
 
+// the choice is made inside the room, by reaching for something
 async function youth() {
   await all(
     (async () => {
-      await L.ink(K.person(400, 830, { kind: 'teen', h: 260, hair: 'long' }), { dur: 2000 });
-      const pa = await L.ink(K.path(400, 560, 220, 380, -30), { dur: 1400 });
-      const pb = await L.ink(K.path(400, 560, 590, 390, 30), { dur: 1400 });
-      const oa = await L.ink(K.shoes(220, 330, .9), { dur: 1200 });
-      const ob = await L.ink(K.books(590, 350, .9), { dur: 1200 });
-      await sleep(300);
-      const i = await L.choose([[220, 316, 58, 'ballet shoes'], [590, 326, 62, 'books']]);
+      await L.ink([...K.frame(400, 330, 240, 280), ...K.desk(620, 640), { p: [[150, 330], [168, 330]], w: 2 }], { dur: 700, opacity: .9 });
+      const shoes = L.g(); await L.ink(K.shoes(160, 400, .8), { parent: shoes, dur: 500 });
+      const books = L.g(); await L.ink(K.books(620, 640, .65), { parent: books, dur: 400 });
+      const a = fig(L, { x: 400, y: 790, h: 280, kind: 'teen', hair: 'long', clothes: 'dress', p: { head: -6 } });
+      await sleep(900); a.to({ head: 10, neck: 8 }, 1400);
+      const i = await L.choose([[160, 380, 60, 'ballet shoes', shoes], [620, 610, 60, 'books', books]]);
       S.dream = i === 0 ? 'dance' : 'books';
-      await L.ink(i === 0 ? K.path(400, 560, 220, 380, -30) : K.path(400, 560, 590, 390, 30), { dur: 900, w: 3 });
-      await all(L.erase(i === 0 ? pb : pa, 1200), L.erase(i === 0 ? ob : oa, 1200));
-      await sleep(1600); await L.clear(1200);
+      const dir = i === 0 ? -1 : 1;
+      a.set({ f: dir });
+      await a.walk(dir * 150, 1900);
+      await a.to({ handN: i === 0 ? [176, 410] : [600, 610], spine: 6 }, 900);
+      await L.fade(i === 0 ? books : shoes, .08, 1600, false);
+      await sleep(1400);
+      await L.clear(600);
       if (S.dream === 'dance') {
-        await L.ink(K.frame(400, 330, 300, 360), { dur: 1600, opacity: .6 });
-        await L.ink(K.ground(760, -100, 900, 4, 2), { dur: 800 });
-        const d = L.g(); pivot(d, 400, 640);
-        await L.ink(K.person(400, 760, { kind: 'adult', h: 290, hair: 'bun', arm: 'reach', part: 'body' }), { parent: d, dur: 2000 });
-        await L.ink([{ p: [[412, 682], [413, 720], [414, 760], [426, 761]], w: 1.9 }, { p: [[388, 684], [340, 660], [282, 618]], w: 1.9 }], { parent: d, dur: 900 });
-        await L.taps(400, 560, 3, async k => { A.note(68 + k * 4, .12); await L.move(d, 0, 0, 900, 'ease-in-out', [-8, 6, 0][k]); }, { r: 40, label: 'dance' });
+        cam(L, [140, 330, 520, 520]);
+        await L.ink([...K.frame(400, 420, 260, 320), ...K.ground(770, -100, 900, 4, 2)], { dur: 600, opacity: .7 });
+        const d = fig(L, { x: 400, y: 770, h: 290, hair: 'bun', clothes: 'dress', p: { sN: -40, eN: 20, sF: -130, eF: 10 } });
+        await sleep(500);
+        await d.to({ spine: 24, hF: -70, kF: 2, sN: -100, eN: 10, sF: 60, eF: 6, neck: -6 }, 2400);
+        A.note(71, .07, 5);
+        await sleep(2600);
       } else {
-        await L.ink(K.desk(400, 660), { dur: 1200 });
-        await L.ink(K.person(400, 660, { kind: 'adult', h: 250, hair: 'long', pose: 'bust' }), { dur: 2000 });
-        const stack = L.g(); await L.ink(K.books(560, 660, .7), { parent: stack, dur: 900 });
-        await L.taps(250, 640, 3, async k => { A.note(68 + k * 4, .12); await L.ink([{ p: [[220, 652 - k * 14], [252, 640 - k * 14], [284, 652 - k * 14]], w: 1.6 }], { dur: 500 }); }, { r: 40, label: 'read' });
+        cam(L, [200, 380, 480, 480]);
+        await L.ink([...K.desk(430, 650), ...K.books(560, 650, .6)], { dur: 600 });
+        const r = fig(L, { x: 330, y: 790, h: 280, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 680, spine: 14, neck: 20, handN: [420, 640], handF: [400, 642] } });
+        await L.ink([{ p: [[400, 646], [428, 634], [458, 646]], w: 1.4 }], { dur: 300 });
+        for (let k = 0; k < 2; k++) { await sleep(1300); await r.to({ handN: [450, 636] }, 500); await r.to({ handN: [420, 640] }, 500); }
+        await sleep(1400);
       }
-      await sleep(2200);
       S.photos.push(S.dream);
     })(),
     (async () => {
-      await R.ink(K.person(400, 830, { kind: 'teen', h: 260, hair: 'short' }), { dur: 2000 });
-      const pa = await R.ink(K.path(400, 560, 220, 400, -30), { dur: 1400 });
-      const pb = await R.ink(K.path(400, 560, 590, 400, 30), { dur: 1400 });
-      const oa = await R.ink(K.house(220, 380, .55, false), { dur: 1400 });
-      const ob = await R.ink(K.suitcase(590, 380, 1), { dur: 1200 });
-      await sleep(300);
-      const i = await R.choose([[220, 330, 64, 'stay home'], [590, 346, 56, 'leave for the city']]);
+      A.sea(true);
+      await R.ink([...K.frame(330, 330, 260, 240), ...K.door(660, 790)], { dur: 700, opacity: .9 });
+      await R.ink(K.sea(380, 210, 450), { dur: 400, opacity: .5 });
+      const dog = R.g(); await R.ink(K.dogLying(210, 790, 1), { parent: dog, dur: 500 });
+      const bag = R.g(); await R.ink(K.suitcase(570, 790, .9), { parent: bag, dur: 400 });
+      const b = fig(R, { x: 380, y: 790, h: 285, kind: 'teen', hair: 'short', clothes: 'coat', f: -1, p: { neck: 6 } });
+      await sleep(900); b.to({ head: -8 }, 1200);
+      const i = await R.choose([[220, 770, 58, 'stay with the dog', dog], [570, 760, 54, 'take the bag', bag]]);
       S.place = i === 0 ? 'sea' : 'city';
-      await R.ink(i === 0 ? K.path(400, 560, 220, 400, -30) : K.path(400, 560, 590, 400, 30), { dur: 900, w: 3 });
-      await all(R.erase(i === 0 ? pb : pa, 1200), R.erase(i === 0 ? ob : oa, 1200));
-      await sleep(1600); await R.clear(1200);
-      if (S.place === 'sea') {
-        A.sea(true);
-        await R.ink(K.sea(620, -100, 900), { dur: 1800 });
-        const sun = R.g(); await R.ink(K.sun(560, 470, 40), { parent: sun, dur: 1000 });
-        await R.ink(K.person(330, 760, { kind: 'adult', h: 270, hair: 'short', pose: 'sit' }), { dur: 2000 });
-        await R.ink(K.dogLying(470, 760, 1), { dur: 1400 });
-        await R.taps(560, 470, 3, async k => { A.note(66 + k * 3, .12); R.washTo('gold', .2 + k * .2, 1200); await R.move(sun, 0, 50 * (k + 1), 1200); }, { r: 46, label: 'sun' });
+      if (i === 0) {
+        await b.walk(-100, 1500);
+        await b.to({ ...POSES.sit, py: 760, spine: 18, neck: 16, handN: [240, 772] }, 1400);
+        await R.fade(bag, .08, 1400, false);
+        A.note(66, .06, 5);
+        await sleep(2400);
       } else {
+        b.set({ f: 1 });
+        await b.walk(140, 1700);
+        await b.to({ handN: [570, 718], spine: 10 }, 700);
+        await R.fade(dog, .1, 1200, false);
+        await sleep(700);
+        await R.clear(600); A.sea(false);
         R.weatherOn('rain', 60, [-100, 900]);
-        await R.ink(K.skyline(760, -100, 900), { dur: 2400 });
-        await R.ink(K.person(360, 790, { kind: 'adult', h: 270, hair: 'short' }), { dur: 2000 });
-        await R.ink(K.suitcase(460, 790, .8), { dur: 800 });
-        const wins = [[120, 520], [260, 470], [620, 540]];
-        await R.taps(400, 440, 3, async k => { A.note(66 + k * 3, .12); const [x, y] = wins[k]; await R.ink([{ p: [[x, y], [x + 20, y], [x + 20, y + 26], [x, y + 26]], c: true, fill: '#f0b860', fo: .6, w: 1 }], { dur: 400 }); }, { r: 40, label: 'lights' });
+        await R.ink(K.skyline(760, -100, 900), { dur: 700, opacity: .6 });
+        fig(R, { x: 330, y: 790, h: 280, hair: 'short', clothes: 'coat', p: { handN: [400, 720] } });
+        await R.ink(K.suitcase(410, 790, .85), { dur: 400 });
+        for (const [x, y] of [[120, 520], [260, 470], [620, 540]]) { await sleep(700); await R.ink([{ p: [[x, y], [x + 20, y], [x + 20, y + 26], [x, y + 26]], c: true, fill: '#f0b860', fo: .55, w: 1 }], { dur: 300, flat: true }); }
+        await sleep(1600);
       }
-      await sleep(2200);
       S.photos.push(S.place);
     })(),
   );
   A.sea(false);
-  await all(L.clear(), R.clear());
+  await all(L.clear(700), R.clear(700));
 }
 
 async function meeting() {
   const city = S.place === 'city';
   await all(
     (async () => {
-      if (city) { L.weatherOn('rain', 60, [-100, 900]); await L.ink(K.skyline(720, -100, 900), { dur: 1800, opacity: .5 }); await L.ink(K.lamp(160, 760), { dur: 900 }); }
-      else { A.sea(true); await L.ink(K.sea(600, -100, 900), { dur: 1400 }); }
-      await L.ink(K.ground(760, -100, 900, 4, 2), { dur: 600 });
-      const a = await walker(L, 150, 760, { hair: 'long' });
-      let hatG; if (!city) { hatG = L.g(); await L.ink(K.hat(150, 486, .8), { parent: hatG, dur: 600 }); }
-      await all(a.walk(440, 6000), hatG ? L.move(hatG, 440, 0, 6000, 'linear') : null);
-      if (!city) { pivot(hatG, 150, 486); await L.move(hatG, 760, -60, 1800, 'ease-in', 140); }
+      if (city) { L.weatherOn('rain', 60, [-100, 900]); await L.ink([...K.skyline(720, -100, 900), ...K.lamp(160, 760)], { dur: 700, opacity: .5 }); }
+      else { A.sea(true); await L.ink(K.sea(600, -100, 900), { dur: 600 }); }
+      await L.ink(K.ground(760, -100, 900, 4, 2), { dur: 400 });
+      const a = fig(L, { x: 100, y: 760, h: 290, hair: 'long', clothes: 'dress' });
+      await a.walk(560, 7200, { onPlant: () => A.footstep(false) });
     })(),
     (async () => {
-      if (city) { R.weatherOn('rain', 60, [-100, 900]); await R.ink(K.skyline(720, -100, 900), { dur: 1800, opacity: .5 }); await R.ink(K.lamp(640, 760), { dur: 900 }); }
-      else { await R.ink(K.sea(600, -100, 900), { dur: 1400 }); await R.ink(K.sun(500, 520, 36), { dur: 800 }); R.washTo('gold', .4, 3000); }
-      await R.ink(K.ground(760, -100, 900, 4, 2), { dur: 600 });
-      const b = await walker(R, 650, 760, { hair: 'short' });
-      let um; if (city) { um = R.g(); await R.ink(K.umbrella(690, 400, .8), { parent: um, dur: 900 }); }
-      await all(b.walk(-420, 6000), um ? R.move(um, -420, 0, 6000, 'linear') : null);
-      if (!city) { const h = R.g(); await R.ink(K.hat(90, 744, .8), { parent: h, dur: 500 }); }
+      if (city) { R.weatherOn('rain', 60, [-100, 900]); await R.ink([...K.skyline(720, -100, 900), ...K.lamp(640, 760)], { dur: 700, opacity: .5 }); }
+      else { await R.ink([...K.sea(600, -100, 900), ...K.sun(500, 520, 34)], { dur: 600 }); R.washTo('gold', .4, 3000); }
+      await R.ink(K.ground(760, -100, 900, 4, 2), { dur: 400 });
+      const b = fig(R, { x: 700, y: 760, h: 300, hair: 'short', clothes: 'coat', f: -1, p: city ? { handN: [745, 560] } : {} });
+      let um; if (city) { um = R.g(); await R.ink(K.umbrella(752, 410, .75), { parent: um, dur: 400 }); }
+      await all(b.walk(-540, 7200), um ? R.move(um, -540, 0, 7200, 'ease-in-out') : null);
     })(),
   );
-  await sleep(400);
-  if (city) await R.tap(270, 380, 52, { label: 'umbrella' });
-  else await R.tap(90, 740, 40, { label: 'hat' });
-  A.chord(.1);
+  // they notice each other. a pause before anything happens.
+  await sleep(900);
   await merge();
-  A.music(3); A.sea(false);
-  // together for the first time
-  if (city) { B.weatherOn('rain', 90); await B.ink(K.skyline(760, -600, 1400), { dur: 2000, opacity: .4 }); }
-  else { await B.ink(K.sea(600, -600, 1400), { dur: 1600 }); await B.ink(K.sun(400, 540, 38), { dur: 900 }); }
-  B.washTo('gold', .55, 4000);
-  await B.ink(K.ground(760, -600, 1400, 6, 2), { dur: 900 });
-  await all(fig(B, 330, 760, { hair: 'long', arm: city ? 'down' : 'reachR' }, 2400), fig(B, 470, 760, { hair: 'short', arm: city ? 'up' : 'reachL' }, 2400));
-  if (city) await B.ink(K.umbrella(420, 410, .9), { dur: 1200 });
-  else await B.ink(K.hat(400, 556, .7), { dur: 700 });
-  await sleep(3800);
+  A.music(2.6); A.sea(false);
+  if (city) { B.weatherOn('rain', 90); await B.ink(K.skyline(760, -600, 1400), { dur: 600, opacity: .35 }); }
+  else { await B.ink([...K.sea(600, -600, 1400), ...K.sun(590, 470, 28)], { dur: 600 }); }
+  B.washTo('gold', .5, 4000);
+  await B.ink(K.ground(760, -600, 1400, 6, 2), { dur: 400 });
+  cam(B, [140, 300, 520, 520]);
+  const x1 = fig(B, { x: 320, y: 760, h: 290, hair: 'long', clothes: 'dress', p: { neck: 8 } });
+  const x2 = fig(B, { x: 490, y: 760, h: 300, hair: 'short', clothes: 'coat', f: -1, p: city ? { handN: [432, 530] } : { handN: [450, 640] } });
+  if (city) await B.ink(K.umbrella(420, 410, .8), { dur: 600 });
+  else { const h = B.g(); await B.ink(K.hat(452, 640, .6), { parent: h, dur: 400 }); await sleep(900); await all(x2.to({ handN: [405, 600] }, 1300), B.move(h, -46, -40, 1300)); await x1.to({ handN: [395, 600] }, 900); }
+  await cam(B, [200, 340, 400, 400], 5000);
+  await sleep(1200);
   S.photos.push(city ? 'umbrella' : 'hat');
-  await B.clear(1600);
+  await B.clear(900);
 }
 
 async function swing() {
-  const top = -1100, seat = 560;
-  const mk = async (x, hair, arm) => {
-    const g = B.g(); pivot(g, x, top);
-    await B.ink(K.swing(x, top, seat - top), { parent: g, dur: 1600 });
-    await B.ink(K.person(x, seat + 66, { h: 240, pose: 'sit', hair, arm }), { parent: g, dur: 2000 });
-    return g;
-  };
-  const a = await mk(290, 'long', 'reachR'), b = await mk(510, 'short', 'reachL');
-  const sw = (g, ph) => g.animate([{ transform: 'rotate(-3deg)' }, { transform: 'rotate(3deg)' }], { duration: T(2600), direction: 'alternate', iterations: Infinity, easing: 'ease-in-out', delay: -T(ph) });
-  const sa = sw(a, 0), sb = sw(b, 1300);
-  await sleep(5200);
-  sa.cancel(); sb.cancel();
-  await sleep(400);
-  await B.drag(369, 512, 400, 512, t => { a.style.transform = `rotate(${-1.25 * t}deg)`; b.style.transform = `rotate(${1.25 * t}deg)`; }, { r: 30 });
-  A.chord(.13); B.washTo('gold', .7, 3000);
-  await sleep(3600);
-  await B.clear(1500);
-  // a photograph, on the line
-  await B.ink(K.clothesline(250, -600, 1400), { dur: 1600 });
-  const pol = await B.ink(K.polaroid(400, 262, 1, 4), { dur: 1200 });
-  await sleep(400);
-  await B.tap(400, 318, 52, { label: 'take a photo' });
+  cam(B);
+  await swingScene(B);
+  // the photograph that hangs on the line afterwards
+  await B.clear(800); B.washTo('transparent', 0, 10); cam(B, [150, 160, 500, 400]);
+  await B.ink(K.clothesline(250, -600, 1400), { dur: 600 });
+  await B.ink(K.polaroid(400, 262, 1, 4), { dur: 500 });
+  await sleep(1100);
   await flash(B);
-  await B.ink([...K.person(384, 352, { h: 66, hair: 'long' }), ...K.person(418, 352, { h: 66, hair: 'short' })], { dur: 3000, w: 1.2, opacity: .85 });
+  await B.ink([...K.person(384, 352, { h: 66, hair: 'long' }), ...K.person(418, 352, { h: 66, hair: 'short' })], { dur: 2600, w: 1.1, opacity: .85, pen: true });
   S.photos.push('swing');
-  await sleep(2800);
-  await B.clear(1500);
+  await sleep(2200);
+  await B.clear(800);
+}
+async function flash(p) { const r = el('rect', { x: -1600, y: -1200, width: 4000, height: 3300, fill: '#fffdf6', opacity: 0, 'pointer-events': 'none' }, p.ui); A.shutter(); await r.animate([{ opacity: 0 }, { opacity: .95, offset: .15 }, { opacity: 0 }], { duration: T(900) }).finished; r.remove(); }
+
+// two cups on a table: shown here, then varied for the rest of the life
+async function cupsScene(p, { a = true, b = true, x = 400, steam = true, oneUntouched = false } = {}) {
+  await p.ink(K.table(x, 620, 380), { dur: 500 });
+  const out = {};
+  if (a) out.a = fig(p, { x: x - 150, y: 900, h: 290, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 690, spine: 8, neck: 10 } });
+  if (b) out.b = fig(p, { x: x + 150, y: 900, h: 300, hair: 'short', clothes: 'coat', pose: 'sit', f: -1, p: { py: 690, spine: 8, neck: 10 } });
+  await sleep(700);
+  const put = async (F, cx) => { if (!F) return; await F.to({ handN: [cx, 606], spine: 16 }, 900); await p.ink(K.cup(cx, 620), { dur: 300 }); F.p.handN = null; await F.to({ sN: 20, eN: 70, spine: 8 }, 900); };
+  await all(put(out.a, x - 50), (async () => { await sleep(350); await put(out.b, x + 50); })());
+  if (oneUntouched && !out.a) await p.ink(K.cup(x - 50, 620), { dur: 300, opacity: .9 });
+  if (steam) await p.ink([...K.steam(x - 50, 620), ...K.steam(x + 50, 620)], { dur: 1400, pen: true, opacity: .8 });
+  return out;
 }
 
 async function home() {
   A.music(2);
-  await B.ink(K.frame(400, 270, 220, 180), { dur: 1600, opacity: .7 });
-  await B.ink(K.table(400, 610, 360), { dur: 1200 });
-  await all(fig(B, 300, 610, { h: 300, pose: 'bust', hair: 'long' }, 2000), fig(B, 500, 610, { h: 300, pose: 'bust', hair: 'short' }, 2000));
-  await B.ink([...K.cup(355, 610), ...K.cup(445, 610)], { dur: 1000 });
-  await B.ink(K.dogLying(640, 770, 1), { dur: 1400 });
-  await sleep(500);
-  await B.tap(355, 588, 34, { label: 'cup' });
-  await B.ink([...K.steam(355, 610), ...K.steam(445, 610)], { dur: 1600 });
-  await sleep(2400);
-  await B.dark(true, 2600); await sleep(1600); await B.dark(false, 2600);
+  cam(B, [130, 330, 540, 470]);
+  await B.ink(K.frame(400, 280, 200, 170), { dur: 600, opacity: .6 });
+  await B.ink(K.dogLying(650, 900, 1), { dur: 500 });
+  await cupsScene(B);
+  await sleep(2600);
+  await B.dark(true, 2400); await sleep(1400); await B.dark(false, 2400);
   // the clock starts to hurry
-  const c = B.g(); await B.ink(K.clock(640, 250, 34), { parent: c, dur: 800 });
-  const hand = B.g(); await B.ink([{ p: [[640, 250], [640, 226]], w: 1.8 }], { parent: hand, dur: 300 }); pivot(hand, 640, 250);
-  let tk = 0; const iv = setInterval(() => { A.tick(); tk++; }, T(260));
-  await hand.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(1440deg)' }], { duration: T(5200), easing: 'ease-in', fill: 'forwards' }).finished;
+  await B.ink(K.clock(620, 250, 30), { dur: 400 });
+  const hand = B.g(); await B.ink([{ p: [[620, 250], [620, 228]], w: 1.8 }], { parent: hand, dur: 200 });
+  hand.style.transformBox = 'view-box'; hand.style.transformOrigin = '620px 250px';
+  const iv = setInterval(() => A.tick(), T(240));
+  await hand.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(1440deg)' }], { duration: T(4800), easing: 'ease-in', fill: 'forwards' }).finished;
   clearInterval(iv);
   S.photos.push('cups');
   await split(0);
@@ -313,125 +289,113 @@ async function home() {
 
 async function busy() {
   A.music(1);
-  const side = async (p, me, hair, doorX, flipDir) => {
-    await p.ink(K.table(me === 'A' ? 330 : 470, 610, 260), { dur: 1000 });
-    const person = await fig(p, me === 'A' ? 290 : 510, 610, { h: 300, pose: 'bust', hair }, 1800);
-    await p.ink(K.cup(me === 'A' ? 360 : 440, 610), { dur: 700 });
-    await p.ink(K.clock(me === 'A' ? 320 : 480, 220, 30), { dur: 600 });
-    await p.ink(K.doorLight(doorX, 760), { dur: 600 });
-    const door = await p.ink(K.door(doorX, 760), { dur: 1200 });
-    await sleep(500);
-    const i = await p.choose([[doorX, 640, 70, 'the lit door'], [me === 'A' ? 360 : 440, 590, 40, 'stay at the table']]);
+  const side = async (p, left) => {
+    const x = left ? 300 : 500, cupX = left ? 380 : 420, doorX = left ? 640 : 160;
+    cam(p, [60, 330, 680, 520]);
+    await p.ink([...K.table(left ? 360 : 440, 640, 260), ...K.clock(left ? 320 : 480, 260, 26)], { dur: 500 });
+    const F = fig(p, { x, y: 900, h: left ? 290 : 300, hair: left ? 'long' : 'short', clothes: left ? 'dress' : 'coat', pose: 'sit', f: left ? 1 : -1, p: { py: 710, spine: 8, neck: 12 } });
+    const cup = p.g(); await p.ink(K.cup(cupX, 640), { parent: cup, dur: 300 });
+    const door = p.g(); await p.ink([...K.doorLight(doorX, 800), ...K.door(doorX, 800)], { parent: door, dur: 500 });
+    await sleep(900);
+    F.to({ neck: 2, spine: 2 }, 1200);
+    const i = await p.choose([[doorX, 680, 70, 'the lit door', door], [cupX, 620, 40, 'stay at the table', cup]]);
     const away = i === 0;
     if (away) {
-      await p.erase(person, 900);
-      await p.ink(K.door(doorX, 760, true), { dur: 900 });
-      const w = await walker(p, me === 'A' ? 290 : 510, 760, { hair, h: 270 }, 1200);
-      await w.walk(doorX - (me === 'A' ? 290 : 510), 2400);
-      await p.fade(w, 0, 900);
-      A.tick(); await sleep(1600);
-      await p.clear(1000);
-      A.office(true);
-      await p.ink(K.desk(400, 640), { dur: 900 });
-      await fig(p, 400, 640, { h: 290, pose: 'bust', hair }, 1500);
-      await p.ink(K.papers(300, 636, 3), { dur: 700 });
-      await p.ink(K.papers(500, 636, 5), { dur: 700 });
+      await F.to({ ...POSES.stand, py: null, y: 800 }, 900);
+      F.p.py = null;
+      await F.walk(doorX - x, 2600);
+      await F.hide(700);
+      A.tick(); await sleep(900);
+      await p.clear(500); A.office(true); cam(p, [100, 350, 600, 520]);
+      await p.ink([...K.desk(400, 650), ...K.papers(300, 646, 3), ...K.papers(500, 646, 5)], { dur: 500 });
+      fig(p, { x: 400 + (left ? -60 : 60), y: 900, h: 290, hair: left ? 'long' : 'short', clothes: left ? 'dress' : 'coat', pose: 'sit', f: left ? 1 : -1, p: { py: 720, spine: 22, neck: 26, handN: [left ? 420 : 380, 644] } });
     } else {
-      await p.ink(K.steam(me === 'A' ? 360 : 440, 610), { dur: 1400 });
-      A.note(71, .08);
+      await F.to({ handN: [cupX - 8, 626], handF: [cupX + 8, 626], spine: 14 }, 1100);
+      await p.ink(K.steam(cupX, 640), { dur: 1400, pen: true, opacity: .8 });
     }
-    await sleep(1800);
+    await sleep(2000);
     return away;
   };
-  const [a, b] = await all(side(L, 'A', 'long', 620), side(R, 'B', 'short', 180));
+  const [a, b] = await all(side(L, true), side(R, false));
   S.awayA = a; S.awayB = b;
   gap(distance());
-  await sleep(1600);
-  if (!a && !b) {
-    // they chose each other. a short breath together
-    await merge();
-    await B.ink(K.table(400, 610, 360), { dur: 900 });
-    await all(fig(B, 300, 610, { h: 300, pose: 'bust', hair: 'long' }, 1600), fig(B, 500, 610, { h: 300, pose: 'bust', hair: 'short' }, 1600));
-    await B.ink([...K.cup(355, 610), ...K.cup(445, 610), ...K.steam(355, 610), ...K.steam(445, 610)], { dur: 1400 });
-    B.washTo('gold', .4, 2500); A.chord(.08);
-    await sleep(3200);
-    await split(0);
-  } else {
-    await all(L.clear(), R.clear());
-  }
+  await sleep(1400);
+  if (!a && !b) { await merge(); cam(B, [130, 330, 540, 470]); await cupsScene(B); B.washTo('gold', .35, 2500); await sleep(2600); await split(0); }
+  else await all(L.clear(700), R.clear(700));
 }
 
-// A's mother. personal: always on A's own half first.
+// A's mother
 async function mother() {
-  A.music(.6);
-  const bedScene = async (late) => {
-    L.weatherOn('snow', 40, [260, 540]);
-    await L.ink(K.frame(400, 300, 260, 220), { dur: 1400 });
-    await L.ink(K.bed(440, 640, 360), { dur: 1200 });
-    if (!late) await L.ink(K.sleeper(440, 640, 360), { dur: 1600 });
-    await fig(L, 170, 780, { h: 260, pose: 'sit', hair: 'long' }, 1600);
+  A.music(.5);
+  const bedside = async () => {
+    L.weatherOn('snow', 30, [280, 520]); cam(L, [80, 360, 640, 520]);
+    await L.ink([...K.frame(400, 300, 260, 220), ...K.bed(470, 660, 360), ...K.sleeper(470, 660, 360)], { dur: 700 });
+    const a = fig(L, { x: 190, y: 900, h: 280, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 760, spine: 14, neck: 16 } });
+    const herHand = L.g(); await L.ink(K.armOnBed(330, 640, 50), { parent: herHand, dur: 400 });
+    await sleep(800);
+    await L.tap(370, 646, 36, { label: 'her hand', target: herHand });
+    await a.to({ handN: [350, 632], spine: 24 }, 800);   // reach
+    await sleep(500);                                     // and wait
+    await a.to({ handN: [366, 642] }, 300);              // touch
+    A.heartbeat(.18); await sleep(3200);
   };
-  const walkMemory = async () => {
-    await L.clear(1600);
-    L.weatherOn('snow', 80, [-100, 900]);
-    await L.ink(K.ground(712, -100, 900), { dur: 1200 });
-    const prints = L.g();
-    const m = await walker(L, 200, 700, { kind: 'old', h: 270, hair: 'grey' }, 2000);
-    const a = await walker(L, 300, 700, { hair: 'long' }, 2000);
-    const link = await L.ink([{ p: [[236, 600], [262, 612], [282, 600]], w: 1.8 }], { dur: 500 });
+  const snowMemory = async () => {
+    await L.clear(500); cam(L);
+    L.weatherOn('snow', 90, [-100, 900]);
+    await L.ink(K.ground(760, -100, 900, 6, 4), { dur: 400 });
+    const m = fig(L, { x: 80, y: 760, h: 270, kind: 'old', hair: 'grey', clothes: 'coat' });
+    const a = fig(L, { x: 170, y: 760, h: 290, hair: 'long', clothes: 'dress' });
+    const link = linkHands(a, m, .5); link(); a.render(); m.render();
     A.music(1);
-    await all(m.walk(220, 6400, prints), a.walk(220, 6400, prints), L.move(link, 220, 0, 6400, 'linear'));
-    await all(L.fade(m, 0, 4200), L.fade(link, 0, 2400));
-    A.note(64, .1, 6);
-    await a.walk(260, 5200, prints);
-    await sleep(1800);
+    const fp = prints(L);
+    await sleep(700);
+    // she is slower now; her daughter matches her
+    await all(m.walk(240, 7600, { short: true, onStep: link, onPlant: fp }), a.walk(240, 7600, { short: true, onStep: link, onPlant: fp, phase: 1 }));
+    m.hide(4200);
+    await sleep(800);
+    a.p.handN = null; await a.to({ sN: 10, eN: 10 }, 1400);
+    A.music(0); await sleep(2500);                       // silence
+    await a.walk(160, 4200, { short: true, onPlant: fp });
+    await sleep(3000);
   };
   let present;
   const left = (async () => {
-    if (!S.awayA) {
-      await bedScene(false);
-      await L.tap(330, 626, 32, { label: 'her hand' });
-      await L.ink([{ p: [[226, 660], [280, 640], [330, 628]], w: 1.8 }], { dur: 900 });
-      A.heartbeat(.2); await sleep(2600);
-      present = true; await walkMemory();
-    } else {
-      await L.ink(K.desk(400, 640), { dur: 900 });
-      await fig(L, 400, 640, { h: 290, pose: 'bust', hair: 'long' }, 1400);
-      const st = await L.ink(K.papers(300, 636, 6), { dur: 700 });
-      await L.ink(K.phone(510, 636), { dur: 600 });
-      await sleep(700);
-      A.ring(3); const bz = await L.ink(K.buzz(510, 636), { dur: 300 });
-      const i = await L.choose([[510, 612, 38, 'answer'], [300, 610, 46, 'keep working']], { timeout: 9000 });
-      await L.fade(bz, 0, 300);
-      A.office(false);
-      if (i === 0) { present = true; await L.clear(1000); await bedScene(false); await L.tap(330, 626, 32, { label: 'her hand' }); await L.ink([{ p: [[226, 660], [280, 640], [330, 628]], w: 1.8 }], { dur: 900 }); A.heartbeat(.15); await sleep(1600); await walkMemory(); }
-      else {
-        present = false;
-        await L.clear(1200);
-        await bedScene(true);
-        A.radio(true); await sleep(5200); A.radio(false);
-        await sleep(1800);
-      }
+    if (!S.awayA) { await bedside(); present = true; await snowMemory(); return; }
+    cam(L, [100, 350, 600, 520]);
+    await L.ink([...K.desk(400, 650), ...K.papers(300, 646, 6), ...K.phone(510, 646)], { dur: 500 });
+    fig(L, { x: 340, y: 900, h: 290, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 720, spine: 22, neck: 26, handN: [420, 644] } });
+    await sleep(1600);
+    A.ring(3); const bz = await L.ink(K.buzz(510, 646), { dur: 200 });
+    const i = await L.choose([[510, 622, 38, 'answer'], [300, 620, 46, 'keep working']], { timeout: 9000 });
+    await L.fade(bz, 0, 300); A.office(false);
+    if (i === 0) { present = true; await L.clear(500); await bedside(); await snowMemory(); }
+    else {
+      present = false;
+      await L.clear(800); cam(L, [80, 360, 640, 520]);
+      L.weatherOn('snow', 30, [280, 520]);
+      await L.ink([...K.frame(400, 300, 260, 220), ...K.bed(470, 660, 360)], { dur: 700 });
+      fig(L, { x: 190, y: 900, h: 280, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 760, spine: 4, neck: 30 } });
+      A.radio(true); await sleep(5200); A.radio(false);
+      A.music(0); await sleep(3000);
     }
   })();
   const right = (async () => {
     if (!S.awayB) {
-      await R.ink(K.frame(400, 300, 240, 220), { dur: 1400, opacity: .7 });
-      await R.ink(K.person(420, 780, { hair: 'short', h: 290 }), { dur: 1800 });
-      await R.ink(K.dogLying(560, 780, .9), { dur: 1200 });
+      cam(R, [130, 330, 540, 470]);
       if (!S.awayA) {
-        // B is with A for this
-        await R.tap(420, 600, 40, { label: 'go to her' });
+        await R.ink(K.frame(400, 300, 240, 220), { dur: 600, opacity: .7 });
+        fig(R, { x: 400, y: 790, h: 300, hair: 'short', clothes: 'coat', p: { neck: 14, spine: 4 } });
+        await R.ink(K.dogLying(560, 790, .9), { dur: 400 });
       } else {
-        // waiting. nights pass
-        await sleep(2500);
-        for (let k = 0; k < 2; k++) { await R.dark(true, 1600); await sleep(900); await R.dark(false, 1600); await sleep(900); }
+        // the waiting: two cups set out each evening, one goes cold
+        await cupsScene(R, { a: false, steam: false, oneUntouched: true });
+        for (let k = 0; k < 2; k++) { await sleep(1600); await R.dark(true, 1500); await sleep(800); await R.dark(false, 1500); }
       }
     } else {
-      A.office(true);
-      await R.ink(K.desk(400, 640), { dur: 900 });
-      await fig(R, 400, 640, { h: 290, pose: 'bust', hair: 'short' }, 1400);
-      for (let k = 0; k < 4; k++) { await R.ink(K.papers(260 + k * 90, 636, 3 + k), { dur: 700 }); await sleep(1600); }
+      A.office(true); cam(R, [100, 350, 600, 520]);
+      await R.ink(K.desk(400, 650), { dur: 400 });
+      fig(R, { x: 460, y: 900, h: 300, hair: 'short', clothes: 'coat', pose: 'sit', f: -1, p: { py: 720, spine: 24, neck: 28, handN: [380, 644] } });
+      for (let k = 0; k < 4; k++) { await R.ink(K.papers(260 + k * 90, 646, 3 + k), { dur: 400 }); await sleep(1800); }
     }
   })();
   await all(left, right);
@@ -439,166 +403,121 @@ async function mother() {
   if (present && !S.awayB) {
     // not alone in the snow
     await merge();
-    B.weatherOn('snow', 100);
-    await B.ink(K.ground(740, -600, 1400, 6, 3), { dur: 1200 });
-    await all(fig(B, 350, 740, { hair: 'long', arm: 'reachR' }, 2200), fig(B, 450, 740, { hair: 'short', arm: 'reachL' }, 2200));
-    A.chord(.07);
-    await sleep(3600);
+    B.weatherOn('snow', 100); cam(B, [150, 330, 500, 500]);
+    await B.ink(K.ground(760, -600, 1400, 6, 3), { dur: 400 });
+    const a = fig(B, { x: 360, y: 760, h: 290, hair: 'long', clothes: 'dress', p: { neck: 26, spine: 6 } });
+    const b = fig(B, { x: 450, y: 760, h: 300, hair: 'short', clothes: 'coat', f: -1, p: { neck: 10 } });
+    await sleep(1400);
+    const sh = a.shoulder();
+    await b.to({ handN: [sh[0] + 4, sh[1] + 4], spine: 6 }, 1400);
+    A.chord(.06);
+    await sleep(3800);
     await split(distance());
-  } else {
-    await all(L.clear(), R.clear());
-  }
+  } else await all(L.clear(700), R.clear(700));
 }
 
-// the years that follow. what happens depends on who went away.
-async function years() {
-  if (S.awayB) return accident();
-  if (S.awayA) return waiting();
-  return togetherYears();
-}
+async function years() { if (S.awayB) return accident(); if (S.awayA) return waiting(); return togetherYears(); }
+
 async function accident() {
-  S.accident = true;
-  A.music(1); A.office(false);
+  S.accident = true; A.music(1); A.office(false);
   const r = (async () => {
     R.weatherOn('rain', 60, [-100, 900]);
-    await R.ink(K.skyline(720, -100, 900), { dur: 1600, opacity: .45 });
-    await R.ink(K.ground(760, -100, 900, 4, 2), { dur: 600 });
-    const b = await walker(R, 640, 760, { hair: 'short' }, 1400);
-    const hl = R.g(); await R.ink(K.headlights(80, 700), { parent: hl, dur: 400, opacity: .2 });
-    b.walk(-300, 3400);
+    await R.ink([...K.skyline(720, -100, 900), ...K.ground(760, -100, 900, 4, 2)], { dur: 600, opacity: .5 });
+    const b = fig(R, { x: 660, y: 760, h: 300, hair: 'short', clothes: 'coat', f: -1 });
+    const hl = R.g(); await R.ink(K.headlights(80, 700), { parent: hl, dur: 300, opacity: .2 });
+    b.walk(-320, 3600, { spine: 12 });
     hl.animate([{ opacity: .2 }, { opacity: 1 }], { duration: T(3000), fill: 'forwards' });
     A.crash(); await sleep(2900);
-    await flash(R);
-    R.weatherOff();
-    await R.dark(true, 400);
-    A.music(0);
-    for (let k = 0; k < 3; k++) { A.beep(); await sleep(1400); }
-    await R.clear(300);
+    await flash(R); R.weatherOff();
+    await R.dark(true, 300);
+    A.music(0); await sleep(2600);                       // nothing
+    for (let k = 0; k < 2; k++) { A.beep(); await sleep(1500); }
+    await R.clear(200);
   })();
   const l = (async () => {
-    if (!S.awayA) {
-      await L.ink(K.frame(400, 300, 240, 220), { dur: 1200, opacity: .7 });
-      await L.ink(K.table(400, 640, 300), { dur: 900 });
-      await L.ink(K.cup(380, 640), { dur: 600 });
-      await L.ink(K.phone(470, 640), { dur: 500 });
-      await sleep(3000);
-    } else {
-      await L.ink(K.desk(400, 640), { dur: 900 });
-      await fig(L, 400, 640, { h: 290, pose: 'bust', hair: 'long' }, 1400);
-      await L.ink(K.papers(300, 636, 6), { dur: 700 });
-      await L.ink(K.phone(510, 636), { dur: 600 });
-      await sleep(2400);
-    }
+    cam(L, [100, 350, 600, 520]);
+    if (!S.awayA) await L.ink([...K.table(400, 650, 300), ...K.cup(380, 650), ...K.phone(470, 650)], { dur: 500 });
+    else { await L.ink([...K.desk(400, 650), ...K.papers(300, 646, 6), ...K.phone(510, 646)], { dur: 500 }); fig(L, { x: 340, y: 900, h: 290, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 720, spine: 22, neck: 26, handN: [420, 644] } }); }
+    await sleep(2400);
   })();
   await all(r, l);
-  // the phone, in the dark
   A.ring(3);
   const px = S.awayA ? 510 : 470;
-  const bz = await L.ink(K.buzz(px, S.awayA ? 636 : 640), { dur: 300 });
+  const bz = await L.ink(K.buzz(px, 650), { dur: 200 });
   let go;
-  if (!S.awayA) { await L.tap(px, 616, 36, { label: 'answer' }); go = true; }
-  else { const i = await L.choose([[px, 612, 38, 'answer'], [300, 610, 46, 'keep working']], { timeout: 9000 }); go = i === 0; }
-  await L.fade(bz, 0, 300);
-  await L.clear(1200);
+  if (!S.awayA) { await L.tap(px, 626, 36, { label: 'answer' }); go = true; }
+  else { const i = await L.choose([[px, 622, 38, 'answer'], [300, 620, 46, 'keep working']], { timeout: 9000 }); go = i === 0; }
+  await L.fade(bz, 0, 300); await L.clear(600);
   if (go) {
-    // a bed at the seam; A's hand reaching into the dark half
-    await L.ink(K.bed(760, 640, 300), { dur: 1000 });
-    await fig(L, 330, 780, { h: 270, pose: 'sit', hair: 'long', arm: 'reachR' }, 1600);
-    const lineG = R.g({}, R.over);
-    let beat = null;
-    await R.taps(120, 600, 5, async k => {
-      A.heartbeat(.35 + k * .08); A.beep();
-      if (beat) R.fade(beat, 0, 400);
-      beat = await R.ink(K.monitorLine(-40, 840, 450), { white: true, parent: lineG, dur: 700, opacity: .3 + k * .14 });
-    }, { r: 44, white: true, label: 'heartbeat' });
-    await R.dark(false, 3200);
-    R.fade(lineG, 0, 800);
-    await R.ink(K.bed(160, 640, 300), { dur: 900 });
-    await R.ink(K.sleeper(160, 640, 300, 'none'), { dur: 1400 });
-    await R.ink(K.armOnBed(80, 620, 80), { dur: 600 });
-    A.music(2); A.chord(.1);
+    // a bed at the seam. A reaches into the dark half.
+    cam(L);
+    await L.ink(K.bed(800, 660, 300), { dur: 400 });
+    fig(L, { x: 420, y: 900, h: 280, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 760, spine: 20, neck: 20, handN: [700, 640] } });
+    await sleep(1200);
+    await R.tap(120, 600, 50, { white: true, label: 'hold on' });
+    A.heartbeat(.4); A.beep();
+    const beat = await R.ink(K.monitorLine(-40, 840, 450), { white: true, dur: 900, pen: true, opacity: .6 });
+    await sleep(1600);
+    await R.dark(false, 4200); R.fade(beat, 0, 600);
+    await R.ink([...K.bed(160, 660, 300), ...K.sleeper(160, 660, 300, 'none'), ...K.armOnBed(80, 640, 70)], { dur: 900 });
+    A.music(2); A.chord(.07);
     S.woke = 'together'; S.awayA = false; S.awayB = false;
-    await sleep(2400);
-    await merge();
-    await B.ink(K.bed(400, 640, 380), { dur: 1000 });
-    await B.ink(K.sleeper(400, 640, 380, 'none'), { dur: 1200 });
-    await fig(B, 150, 790, { h: 270, pose: 'sit', hair: 'long', arm: 'reachR' }, 1600);
-    B.washTo('gold', .45, 3000);
-    await sleep(3600);
+    await sleep(2200);
+    await merge(); cam(B, [100, 360, 600, 520]);
+    await B.ink([...K.bed(470, 660, 380), ...K.sleeper(470, 660, 380, 'none')], { dur: 500 });
+    fig(B, { x: 200, y: 900, h: 280, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 760, spine: 22, neck: 18, handN: [372, 640] } });
+    B.washTo('gold', .4, 3000);
+    await sleep(4200);
     await split(0);
   } else {
-    await L.ink(K.desk(400, 640), { dur: 800 });
-    await fig(L, 400, 640, { h: 290, pose: 'bust', hair: 'long' }, 1200);
-    for (let k = 0; k < 3; k++) { await L.ink(K.papers(280 + k * 110, 636, 4 + k * 2), { dur: 600 }); await sleep(1700); }
+    cam(L, [100, 350, 600, 520]);
+    await L.ink(K.desk(400, 650), { dur: 400 });
+    fig(L, { x: 340, y: 900, h: 290, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 720, spine: 22, neck: 26, handN: [420, 644] } });
+    for (let k = 0; k < 3; k++) { await L.ink(K.papers(280 + k * 110, 646, 4 + k * 2), { dur: 400 }); await sleep(1900); }
     await R.dark(false, 5200);
-    await R.ink(K.bed(400, 640, 340), { dur: 900 });
-    await R.ink(K.sleeper(400, 640, 340, 'none'), { dur: 1200 });
-    const dg = await R.ink(K.dogLying(420, 790, 1), { dur: 1200 });
-    A.music(1);
-    await R.tap(440, 760, 40, { label: 'the dog' });
-    await R.ink(K.armOnBed(330, 650, 70), { dur: 700 });
-    A.note(71, .1);
-    S.woke = 'alone';
-    gap(2);
-    await sleep(2400);
-    await all(L.clear(), R.clear());
+    cam(R, [100, 360, 600, 520]);
+    await R.ink([...K.bed(400, 660, 340), ...K.sleeper(400, 660, 340, 'none'), ...K.dogLying(420, 800, 1), ...K.armOnBed(330, 660, 70)], { dur: 900 });
+    A.music(1); A.note(71, .06);
+    S.woke = 'alone'; gap(2);
+    await sleep(3200);
+    await all(L.clear(700), R.clear(700));
   }
 }
 async function waiting() {
   A.music(1);
   const l = (async () => {
-    A.office(true);
-    await L.ink(K.desk(400, 640), { dur: 900 });
-    await fig(L, 400, 640, { h: 290, pose: 'bust', hair: 'long' }, 1400);
-    await L.ink(K.papers(280, 636, 5), { dur: 600 });
-    await L.ink(K.polaroid(520, 560, .55, -8), { dur: 1000 });
-    await sleep(600);
-    const r = await L.tap(520, 596, 36, { label: 'the photo', timeout: 11000 });
+    A.office(true); cam(L, [100, 350, 600, 520]);
+    await L.ink([...K.desk(400, 650), ...K.papers(280, 646, 5)], { dur: 500 });
+    fig(L, { x: 340, y: 900, h: 290, hair: 'long', clothes: 'dress', pose: 'sit', p: { py: 720, spine: 22, neck: 26, handN: [420, 644] } });
+    const ph = L.g(); await L.ink(K.polaroid(520, 570, .5, -8), { parent: ph, dur: 500 });
+    await sleep(700);
+    const r = await L.tap(520, 600, 36, { label: 'the photo', timeout: 11000, target: ph });
     A.office(false);
     return r !== 'timeout';
   })();
   const r = (async () => {
-    await R.ink(K.table(400, 610, 300), { dur: 900 });
-    await R.ink([...K.cup(360, 610), ...K.cup(440, 610)], { dur: 800 });
-    await fig(R, 470, 610, { h: 300, pose: 'bust', hair: 'short' }, 1600);
-    const dg = await R.ink(K.dog(640, 780, .9, true), { dur: 1200 });
-    for (let k = 0; k < 2; k++) { await sleep(1200); await R.dark(true, 1400); await sleep(700); await R.dark(false, 1400); }
-    await R.erase(dg, 900); await R.ink(K.dogLying(640, 780, .9), { dur: 900 });
+    cam(R, [130, 330, 540, 470]);
+    await cupsScene(R, { a: false, steam: false, oneUntouched: true });
+    for (let k = 0; k < 2; k++) { await sleep(1300); await R.dark(true, 1400); await sleep(700); await R.dark(false, 1400); }
   })();
   const [back] = await all(l, r);
   if (back) {
-    S.awayA = false; gap(0);
-    A.chord(.1);
-    await merge();
-    await B.ink(K.table(400, 610, 360), { dur: 900 });
-    await all(fig(B, 300, 610, { h: 300, pose: 'bust', hair: 'long' }, 1600), fig(B, 500, 610, { h: 300, pose: 'bust', hair: 'short' }, 1600));
-    await B.ink([...K.cup(355, 610), ...K.cup(445, 610), ...K.steam(355, 610), ...K.steam(445, 610)], { dur: 1400 });
-    await B.ink(K.dogLying(640, 770, 1), { dur: 1000 });
-    B.washTo('gold', .4, 2500);
-    await sleep(3400);
-    await split(0);
-  } else {
-    await sleep(1200);
-    await all(L.clear(), R.clear());
-  }
+    S.awayA = false; gap(0); A.chord(.07);
+    await merge(); cam(B, [130, 330, 540, 470]);
+    await cupsScene(B); B.washTo('gold', .35, 2500);
+    await sleep(3000); await split(0);
+  } else { await sleep(1200); await all(L.clear(700), R.clear(700)); }
 }
 async function togetherYears() {
-  await merge();
-  A.music(2);
-  await B.ink(K.clothesline(250, -600, 1400), { dur: 1400 });
-  const spots = [[250, 262, -5], [400, 272, 3], [550, 262, -2]];
-  await B.ink(K.polaroid(...spots[0].slice(0, 2), 1, spots[0][2]), { dur: 900 });
-  await B.ink([...K.person(236, 352, { h: 66, hair: 'long' }), ...K.person(266, 352, { h: 66, hair: 'short' })], { dur: 1000, w: 1.2 });
-  for (let k = 1; k < 3; k++) {
-    const [x, y, r] = spots[k];
-    await B.ink(K.polaroid(x, y, 1, r), { dur: 900 });
-    await B.tap(x, y + 56, 46, { label: 'take a photo' });
-    await flash(B);
-    if (k === 1) await B.ink(K.dog(x - 6, y + 90, .45), { dur: 1600, w: 1.2 });
-    else await B.ink(K.house(x, y + 92, .3, false), { dur: 1600, w: 1.2 });
+  await merge(); A.music(2); cam(B, [100, 150, 600, 420]);
+  await B.ink(K.clothesline(250, -600, 1400), { dur: 500 });
+  await B.ink([...K.polaroid(250, 262, 1, -5), ...K.person(236, 352, { h: 66, hair: 'long' }), ...K.person(266, 352, { h: 66, hair: 'short' })], { dur: 500 });
+  for (const [x, y, r, k] of [[400, 272, 3, 1], [550, 262, -2, 2]]) {
+    await B.ink(K.polaroid(x, y, 1, r), { dur: 400 });
+    await sleep(900); await flash(B);
+    await B.ink(k === 1 ? K.dog(x - 6, y + 90, .45) : K.house(x, y + 92, .3, false), { dur: 1600, w: 1.1, pen: true });
   }
-  B.washTo('gold', .4, 2500);
-  await sleep(3200);
+  B.washTo('gold', .35, 2500); await sleep(2600);
   S.photos.push('dog');
   await split(0);
 }
@@ -606,84 +525,90 @@ async function togetherYears() {
 async function oldAge() {
   const together = !S.awayA && !S.awayB;
   if (together) {
-    await merge();
-    A.music(2);
+    await merge(); A.music(2);
     B.weatherOn('snow', 120);
-    await B.ink(K.ground(740, -600, 1400, 6, 3), { dur: 1400 });
-    const prints = B.g();
-    const a = await walker(B, 40, 740, { kind: 'old', h: 270, hair: 'bun' }, 1800);
-    const b = await walker(B, 150, 740, { kind: 'old', h: 280, hair: 'grey' }, 1800);
-    await all(a.walk(240, 7600, prints), b.walk(240, 7600, prints));
+    await B.ink(K.ground(760, -600, 1400, 6, 3), { dur: 500 });
+    const a = fig(B, { x: 40, y: 760, h: 275, kind: 'old', hair: 'bun', clothes: 'dress' });
+    const b = fig(B, { x: 120, y: 760, h: 285, kind: 'old', hair: 'grey', clothes: 'coat' });
+    const link = linkHands(b, a, .5); link(); a.render(); b.render();
+    const fp = prints(B);
+    await sleep(700);
+    // one of them is slower now; the other keeps pace
+    await all(a.walk(250, 9000, { short: true, onStep: link, onPlant: fp }), b.walk(250, 9000, { short: true, onStep: link, onPlant: fp, phase: 1.3 }));
     // where are we going? / ... don't know / we're looking for an answer.
-    const puffs = [[a, 1], [b, -1], [a, 1]];
     A.radio(true);
-    for (const [g, d] of puffs) { const bx = g.x + (d > 0 ? 30 : -30); const p = await B.ink(K.breath(bx, 482, 1, d < 0), { dur: 700 }); B.fade(p, 0, 2600); await sleep(1600); }
+    for (const [F, d] of [[a, 1], [b, -1], [a, 1]]) { const sh = F.shoulder(); const p = await B.ink(K.breath(sh[0] + d * 30, sh[1] - 60, 1, d < 0), { dur: 600, pen: true }); B.fade(p, 0, 2600); await sleep(1700); }
     A.radio(false);
-    await sleep(800);
-    await B.tap(335, 600, 34, { label: 'hold hands' });
-    const link = await B.ink([{ p: [[318, 602], [336, 616], [352, 604]], w: 1.8 }], { dur: 500 });
-    // golden hour
+    await cam(B, [180, 360, 420, 440], 2600);
+    const h = b.hand('N');
+    await B.tap(h[0], h[1], 40, { label: 'their hands' });
     A.music(4);
     B.setWeatherKind('gold'); B.washTo('gold', .95, 6000);
-    await all(a.walk(160, 8000, prints), b.walk(160, 8000, prints), B.move(link, 160, 0, 8000, 'linear'));
-    await sleep(3000);
+    await all(a.walk(150, 8000, { short: true, onStep: link, onPlant: fp }), b.walk(150, 8000, { short: true, onStep: link, onPlant: fp, phase: 1.3 }));
+    await sleep(2400);
     const first = S.accident ? b : a, second = first === a ? b : a;
-    await B.fade(link, 0, 1200);
-    await B.fade(first, 0, 5200);
-    A.music(2);
+    first.p.handN = null; second.p.handN = null;
+    await all(first.to({ sN: 4, eN: 8 }, 1200), second.to({ sN: 4, eN: 8 }, 1200));
+    A.music(1.4);
+    await first.hide(5200);
+    A.music(0); await sleep(2800);
+    // the one left lifts a hand toward where the other was, then lowers it
+    await second.to({ handN: [first.p.x, first.shoulder()[1] + 70], spine: 6 }, 1600);
+    await sleep(1400);
+    second.p.handN = null; await second.to({ sN: 4, eN: 10 }, 1600);
+    await sleep(2000);
+    // and later, at the table: two cups out of habit. one goes back.
+    await B.clear(900); cam(B, [130, 330, 540, 470]); B.washTo('gold', .5, 2000);
+    await B.ink(K.table(400, 620, 380), { dur: 400 });
+    const left = first === b;
+    const one = fig(B, { x: left ? 250 : 550, y: 900, h: 280, kind: 'old', hair: left ? 'bun' : 'grey', clothes: left ? 'dress' : 'coat', pose: 'sit', f: left ? 1 : -1, p: { py: 690, spine: 14, neck: 12 } });
+    await sleep(900);
+    const cx1 = left ? 350 : 450, cx2 = left ? 450 : 350;
+    await one.to({ handN: [cx1, 606] }, 900); await B.ink(K.cup(cx1, 620), { dur: 300 });
+    await one.to({ handN: [cx2, 606], spine: 22 }, 1100); const c2 = await B.ink(K.cup(cx2, 620), { dur: 300 });
     await sleep(1600);
-    await second.walk(first === a ? -60 : 60, 2400);
-    await sleep(3000);
-    A.music(1);
-    await B.dark(true, 6000);
-    await sleep(1500);
-    B.weatherOff();
+    await one.to({ handN: [cx2, 610] }, 800); await B.fade(c2, 0, 900);
+    one.p.handN = null; await one.to({ sN: 10, eN: 60, spine: 10 }, 1200);
+    await sleep(3200);
+    await B.dark(true, 6000); await sleep(1600); B.weatherOff();
   } else {
     A.music(2);
     const solo = async (p, x, dx, o) => {
       p.weatherOn('snow', 70, [-100, 900]);
-      await p.ink(K.ground(740, -100, 900, 4, 3), { dur: 1200 });
-      const prints = p.g();
-      const w = await walker(p, x, 740, o, 1800);
-      await w.walk(dx, 9000, prints);
-      return w;
+      await p.ink(K.ground(760, -100, 900, 4, 3), { dur: 500 });
+      const F = fig(p, { x, y: 760, ...o });
+      await F.walk(dx, 10000, { short: true, onPlant: prints(p) });
+      return F;
     };
-    const [a, b] = await all(solo(L, 120, 520, { kind: 'old', h: 270, hair: 'bun' }), solo(R, 680, -520, { kind: 'old', h: 280, hair: 'grey' }));
-    await sleep(1200);
+    const [a, b] = await all(solo(L, 120, 500, { h: 275, kind: 'old', hair: 'bun', clothes: 'dress' }), solo(R, 680, -500, { h: 285, kind: 'old', hair: 'grey', clothes: 'coat', f: -1 }));
+    await sleep(1400);
     // the line between them. touch it, once, if you want
     const r = await L.tap(772, 450, 40, { label: 'the line between', timeout: 15000 });
     if (r !== 'timeout') {
-      A.music(4);
-      gap(0); seam(.25);
-      await all(
-        L.ink([{ p: [[800, 300], [742, 300], [742, 600], [800, 600]], w: 1.8, l: 1 }], { dur: 1400 }),
-        R.ink([{ p: [[0, 300], [58, 300], [58, 600], [0, 600]], w: 1.8, l: 1 }], { dur: 1400 }),
-      );
+      A.music(4); gap(0); seam(.25);
+      await all(L.ink([{ p: [[800, 300], [742, 300], [742, 600], [800, 600]], w: 1.8, l: 1 }], { dur: 1200, pen: true }), R.ink([{ p: [[0, 300], [58, 300], [58, 600], [0, 600]], w: 1.8, l: 1 }], { dur: 1200, pen: true }));
       L.setWeatherKind('gold'); R.setWeatherKind('gold');
-      await all(L.washTo('gold', .9, 5000), R.washTo('gold', .9, 5000));
-      await all(L.ink([{ p: [[678, 534], [700, 470], [708, 410]], w: 1.8 }], { dur: 900 }), R.ink([{ p: [[122, 530], [100, 470], [92, 410]], w: 1.8 }], { dur: 900 }));
-      A.chord(.12);
-      await sleep(6000);
+      await all(L.washTo('gold', .9, 5000), R.washTo('gold', .9, 5000), a.to({ sN: -150, eN: 20 }, 1800), b.to({ sN: -150, eN: 20 }, 1800));
+      A.chord(.08); await sleep(4500);
     } else {
       A.music(3);
-      await all(L.ink(K.bench(560, 740), { dur: 1200 }), R.ink(K.bench(240, 740), { dur: 1200 }));
       L.setWeatherKind('gold'); R.setWeatherKind('gold');
-      await all(L.washTo('gold', .7, 6000), R.washTo('gold', .7, 6000));
-      await sleep(5000);
+      await all(L.washTo('gold', .7, 6000), R.washTo('gold', .7, 6000), a.to({ neck: -14, spine: -4 }, 3000), b.to({ neck: -14, spine: -4 }, 3000));
+      await sleep(4000);
     }
     A.music(1);
     const firstR = S.accident;
     await (firstR ? R : L).dark(true, 5000);
-    await sleep(2500);
+    A.music(0); await sleep(3000);
     await (firstR ? L : R).dark(true, 5000);
-    await sleep(1500);
-    L.weatherOff(); R.weatherOff();
+    await sleep(1500); L.weatherOff(); R.weatherOff();
   }
 }
 
-// ---------- epilogue: the paths you closed, the ones you walked ----------
-async function epilogue(card) {
-  bothEl.classList.add('on'); seam(0); gap(0);
+// ---------- epilogue: the paths closed, the ones walked. no words. ----------
+async function epilogue() {
+  bothEl.classList.add('on'); seam(0); gap(0); cam(B);
+  B.darkR.getAnimations().forEach(a => a.cancel());
   B.darkR.setAttribute('opacity', 1); B.isDark = true;
   B.root.replaceChildren(); B.over.replaceChildren(); B.washTo('transparent', 0, 10);
   A.music(2); A.darkness(0, .5);
@@ -692,67 +617,53 @@ async function epilogue(card) {
     const pts = [[-500, y0]]; let y = y0;
     for (let x = -380; x <= 1300; x += 120) {
       const t = (x + 500) / 1800;
-      const tgt = merge ? (t > .45 ? 700 + (y0 < 700 ? -12 : 12) : y0 + (700 - y0) * t / .45) : y0 + (y1 - y0) * t;
+      const tgt = merge ? (t > .45 ? 600 + (y0 < 600 ? -12 : 12) : y0 + (600 - y0) * t / .45) : y0 + (y1 - y0) * t;
       y = tgt + (rand() - .5) * 30; pts.push([x, y]);
     }
     return pts;
   };
-  const branches = (pts) => {
-    const S2 = [];
-    for (let i = 1; i < pts.length - 1; i++) {
-      for (let k = 0; k < 2; k++) {
-        const [x, y] = pts[i]; const b = [[x, y]]; let by = y, bx = x;
-        const dir = rand() < .5 ? -1 : 1;
-        for (let j = 0; j < 4; j++) { bx += 60 + rand() * 40; by += dir * (20 + rand() * 40); b.push([bx, by]); }
-        S2.push({ p: b, w: 1, o: .22 });
-      }
-    }
-    return S2;
-  };
-  const pa = lifePath(590, together ? 690 : 520, together), pb = lifePath(820, together ? 710 : 900, together);
-  const paths = B.g({}, B.over);
-  await all(B.ink(branches(pa), { parent: paths, white: true, dur: 5000, stagger: .9 }), B.ink(branches(pb), { parent: paths, white: true, dur: 5000, stagger: .9 }));
-  await all(B.ink([{ p: pa, w: 2.4 }], { parent: paths, white: true, dur: 4200 }), B.ink([{ p: pb, w: 2.4 }], { parent: paths, white: true, dur: 4200 }));
-  await sleep(1200);
-  // polaroids on a line
+  const branches = pts => { const out = []; for (let i = 1; i < pts.length - 1; i++) for (let k = 0; k < 2; k++) { const [x, y] = pts[i]; const b = [[x, y]]; let by = y, bx = x; const dir = rand() < .5 ? -1 : 1; for (let j = 0; j < 4; j++) { bx += 60 + rand() * 40; by += dir * (20 + rand() * 40); b.push([bx, by]); } out.push({ p: b, w: 1, o: .22 }); } return out; };
+  const pa = lifePath(470, together ? 590 : 400, together), pb = lifePath(740, together ? 610 : 820, together);
+  await all(B.ink(branches(pa), { white: true, dur: 5000, stagger: .9, pen: true }), B.ink(branches(pb), { white: true, dur: 5000, stagger: .9, pen: true }));
+  await all(B.ink([{ p: pa, w: 2.4 }], { white: true, dur: 4200, pen: true }), B.ink([{ p: pb, w: 2.4 }], { white: true, dur: 4200, pen: true }));
+  await sleep(1000);
   const shots = S.photos.slice(-5);
-  await B.ink(K.clothesline(110, -600, 1400), { white: true, dur: 1400 });
-  const xs = shots.map((_, i) => 400 + (i - (shots.length - 1) / 2) * 150);
+  await B.ink(K.clothesline(150, -600, 1400), { white: true, dur: 1400, pen: true });
   for (let i = 0; i < shots.length; i++) {
-    const x = xs[i], y = 122, rot = (rand() - .5) * 10;
+    const x = 400 + (i - (shots.length - 1) / 2) * 150, y = 162, rot = (rand() - .5) * 10;
     const g = B.g({}, B.over);
-    await B.ink(K.polaroid(x, y, .62, rot), { parent: g, dur: 600, white: false });
-    const m = miniature(shots[i], x, y + 36);
-    await B.ink(m, { parent: g, dur: 900, w: 1.1 });
-    A.tapNote(.07);
+    await B.ink(K.polaroid(x, y, .62, rot), { parent: g, dur: 400 });
+    await B.ink(miniature(shots[i], x, y + 36), { parent: g, dur: 900, w: 1.1, pen: true });
   }
-  await sleep(2400);
-  B.fade(paths, .35, 2000, false);
-  await card(['You can’t choose where you’re born, or how you’re born, or who your parents are,', 'but you can choose how you will live.'], { dark: true, hold: 3200 });
+  await sleep(4000);
 }
 function miniature(k, x, y) {
   const s = .32;
   switch (k) {
     case 'window': return K.house(x, y + 28, .26, false);
     case 'hands': return [...K.person(x - 10, y + 30, { h: 64, kind: 'adult', hair: 'bun' }), ...K.person(x + 12, y + 30, { h: 34, kind: 'child', hair: 'long' })];
-    case 'ball': return [...K.dog(x, y + 28, .4), ...K.ball(x - 22, y + 4).map(q => ({ ...q, p: q.p.map(([px, py]) => [px, py]) }))];
+    case 'ball': return [...K.dog(x, y + 28, .4), ...K.ball(x - 22, y + 4)];
     case 'dance': return K.shoes(x, y + 6, s * 1.4);
     case 'books': return K.books(x, y + 22, s * 1.3);
     case 'sea': return [...K.sun(x, y + 4, 12), { p: [[x - 34, y + 10], [x + 34, y + 10]], w: 1 }];
     case 'city': return K.skyline(y + 30, x - 34, x + 34).map(q => ({ ...q, p: q.p.map(([px, py]) => [px, y + 30 - (y + 30 - py) * .2]) }));
     case 'umbrella': return K.umbrella(x, y, .36);
     case 'hat': return K.hat(x, y + 8, .6);
-    case 'swing': case 'cups': return [...K.person(x - 12, y + 30, { h: 50, hair: 'long' }), ...K.person(x + 12, y + 30, { h: 50, hair: 'short' })];
+    case 'cups': return [...K.cup(x - 14, y + 30), ...K.cup(x + 16, y + 30)];
+    case 'swing': return [...K.person(x - 12, y + 30, { h: 50, hair: 'long' }), ...K.person(x + 12, y + 30, { h: 50, hair: 'short' })];
     case 'dog': return K.dog(x, y + 30, .45);
     default: return K.sun(x, y + 10, 14);
   }
 }
 
-export async function play(panes, card) {
+export async function play(panes) {
   ({ L, R, B } = panes);
-  for (const ep of [birth, childhood, graduation, youth, meeting, swing, home, busy, mother, years, oldAge]) {
+  const only = new URLSearchParams(location.search).get('ep');
+  const eps = { birth, childhood, graduation, youth, meeting, swing, home, busy, mother, years, oldAge };
+  for (const [name, ep] of Object.entries(eps)) {
+    if (only && name !== only) continue;
     await ep();
-    await sleep(700);
+    await sleep(300);
   }
-  await epilogue(card);
+  await epilogue();
 }

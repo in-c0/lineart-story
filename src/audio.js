@@ -91,7 +91,7 @@ const nearest = m => PENTA.reduce((a, b) => Math.abs(b - m) < Math.abs(a - m) ? 
 
 // 0 silence · 1 sparse · 2 arpeggio · 3 melody · 4 golden hour
 export function music(l) { target = l; }
-export function tapNote(vel = .14) {
+export function tapNote(vel = .05) {
   if (!ac) return;
   const ch = CHORDS[chordIdx]; const m = ch.v[Math.floor(Math.random() * 4)] + 24;
   piano(m, ac.currentTime + .01, vel, 3, sfxBus);
@@ -154,4 +154,18 @@ export function crash() {
   const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(3000, t + 1.4);
   const g = ac.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.14, t + 1.4); g.gain.setValueAtTime(.0001, t + 1.42);
   s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t); s.stop(t + 1.5);
+}
+export function creak() {
+  if (!ac) return;
+  const t = ac.currentTime, s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 14; f.frequency.setValueAtTime(620 + Math.random() * 120, t); f.frequency.linearRampToValueAtTime(760 + Math.random() * 160, t + .32);
+  const g = ac.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.05, t + .06); g.gain.exponentialRampToValueAtTime(.0001, t + .38);
+  s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t, Math.random()); s.stop(t + .4);
+}
+export function footstep(snow = true) {
+  if (!ac) return;
+  const t = ac.currentTime, s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = snow ? 'bandpass' : 'lowpass'; f.frequency.value = snow ? 1500 + Math.random() * 500 : 500; f.Q.value = .8;
+  const g = ac.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(snow ? .035 : .02, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + (snow ? .16 : .08));
+  s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t, Math.random()); s.stop(t + .2);
 }
