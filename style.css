@@ -1,0 +1,60 @@
+:root {
+  --paper: #f6f4ef;
+  --ink: #1c1b19;
+  --night: #0b0b0c;
+  --gold: #e7b36a;
+  --gap: 0px;
+  --seam: 1;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+body { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+
+#stage { position: fixed; inset: 0; display: flex; flex-direction: row; gap: var(--gap); background: var(--paper); transition: gap 2.4s ease; }
+@media (orientation: portrait) { #stage { flex-direction: column; } }
+
+.half, #both { position: relative; overflow: hidden; background: var(--paper); }
+.half { flex: 1 1 0; min-width: 0; min-height: 0; }
+#both { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 1.8s ease; }
+#both.on { opacity: 1; pointer-events: auto; }
+.half svg, #both svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; display: block; }
+
+/* the line between two lives */
+#seam { position: absolute; z-index: 2; pointer-events: none; display: flex; justify-content: center; gap: calc(var(--gap) + 0px); opacity: var(--seam); transition: opacity 1.6s ease, gap 2.4s ease; }
+#seam i { display: block; background: var(--ink); opacity: .85; }
+@media (orientation: landscape) {
+  #seam { top: 0; bottom: 0; left: 50%; transform: translateX(-50%); flex-direction: row; }
+  #seam i { width: 1.6px; height: 100%; }
+}
+@media (orientation: portrait) {
+  #seam { left: 0; right: 0; top: 50%; transform: translateY(-50%); flex-direction: column; }
+  #seam i { height: 1.6px; width: 100%; }
+}
+#seam i:nth-child(2) { display: var(--twin, none); }
+
+#card { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.1em; padding: 8vmin; pointer-events: none; text-align: center; font-family: "EB Garamond", Georgia, serif; font-size: clamp(18px, 2.6vmin, 30px); line-height: 1.35; color: var(--ink); }
+#card.dark { color: #ece9e2; }
+#card p { margin: 0; opacity: 0; transform: translateY(6px); transition: opacity 1.6s ease, transform 1.6s ease; max-width: 34ch; }
+#card p.in { opacity: 1; transform: none; }
+#card p.small { font-style: italic; opacity: 0; font-size: .82em; }
+#card p.small.in { opacity: .75; }
+
+#grain { position: absolute; inset: 0; z-index: 6; pointer-events: none; opacity: .06; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* interaction cue: a slow hairline ring */
+.cue { fill: none; stroke: var(--ink); stroke-width: 1.1; stroke-dasharray: 3 7; opacity: .55; transform-box: fill-box; transform-origin: center; animation: spin 14s linear infinite, breathe 2.6s ease-in-out infinite; pointer-events: none; }
+.cue.w { stroke: #f2efe8; }
+.hit { fill: transparent; cursor: pointer; outline: none; }
+.hit:focus-visible + .cue { stroke-width: 2; opacity: .9; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 0%,100% { opacity: .25; } 50% { opacity: .7; } }
+
+.ink { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; }
+.ink.w { stroke: #f2efe8; }
+
+#start { cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cue { animation: none; opacity: .6; }
+}
