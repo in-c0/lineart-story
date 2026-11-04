@@ -22,12 +22,13 @@ are choices. They meet, the line between them dissolves, and life gets busy.
 - About 4–6 minutes. Replay to walk another path.
 
 ## Controls
-Tap or click the faint rotating ring. A few moments ask you to drag. Keyboard: `Tab` to focus,
-`Enter` / `Space` to act, arrow keys to move between choices. Headphones recommended.
+Touch the thing in the scene: a finger, a ball, a door, a hand. What you can touch breathes a little;
+if you wait, it slowly fades and the moment passes. Keyboard: `Tab` to focus, `Enter` / `Space` to act,
+arrow keys to move between choices. Headphones recommended.
 
 ## Tech
-Plain HTML, CSS and JavaScript modules, no build step. Every line is drawn at runtime as SVG
-with a pen-like reveal and a slight "boiling" wobble. The score is a procedural felt-piano
+Plain HTML, CSS and JavaScript modules, no build step. Figures are a jointed rig (IK arms, planted
+feet) drawn at runtime as tapered SVG brush strokes. The score is a procedural felt-piano
 written with the Web Audio API; it thickens over the life and opens up at the golden hour.
 
 Run locally: `python3 -m http.server` in this folder, then open `http://localhost:8000`.
