@@ -262,36 +262,28 @@ export class Pane {
   }
 
   // ---------- interactions ----------
-  _cue(x, y, r, white, target) {
-    const hit = el('circle', { cx: x, cy: y, r: Math.max(r, 44), class: 'hit', tabindex: 0, role: 'button' }, this.ui);
-    const cue = el('g', {}, this.ui);
+  // the click guide: a slow rotating dashed hairline ring around the thing to touch
+  _cue(x, y, r, white) {
     const w = white || this.isDark;
-    let breathe;
-    if (target) { target.style.transformBox = 'fill-box'; target.style.transformOrigin = 'center'; breathe = target.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.035)' }, { transform: 'scale(1)' }], { duration: 2400, iterations: Infinity, easing: 'ease-in-out' }); }
-    const ring = () => { if (!hit.isConnected) return; const c = el('circle', { cx: x, cy: y, r: r * .5, fill: 'none', stroke: w ? '#f2efe8' : '#1c1b19', 'stroke-width': 1, opacity: 0, 'pointer-events': 'none' }, cue); c.animate([{ r: r * .5, opacity: .45 }, { r: r * 1.6, opacity: 0 }], { duration: 1800, easing: 'ease-out' }).finished.then(() => c.remove()); };
-    // first time ever: show where at once. after that, only when the player seems lost
-    const first = firstCue; firstCue = false;
-    const timers = [setTimeout(ring, first ? 500 : 7000)];
-    const iv = setInterval(ring, first ? 2600 : 5200);
-    timers.push(setTimeout(() => {}, 0));
-    const stop = () => { timers.forEach(clearTimeout); clearInterval(iv); breathe && breathe.cancel(); };
-    hit.addEventListener('pointerdown', stop, { once: true });
-    const obs = new MutationObserver(() => { if (!hit.isConnected) { stop(); obs.disconnect(); } }); obs.observe(this.ui, { childList: true });
+    const hit = el('circle', { cx: x, cy: y, r: Math.max(r, 50), class: 'hit', tabindex: 0, role: 'button' }, this.ui);
+    const cue = el('circle', { cx: x, cy: y, r, class: 'cue' + (w ? ' w' : '') }, this.ui);
+    if (firstCue) { firstCue = false; ripple(this, x, y, r, w); }
     return { hit, cue, x, y, r };
   }
   // wait for one tap at (x,y). With o.timeout the moment can pass: the target fades and 'timeout' is returned.
   tap(x, y, r = 40, o = {}) {
     mark('tap', o.label);
     return new Promise(res => {
-      const c = this._cue(x, y, Math.max(r, 50), o.white, o.target);
+      const c = this._cue(x, y, r, o.white);
       if (o.label) c.hit.setAttribute('aria-label', o.label);
       const fade = o.timeout && o.target ? fadeOut(o.target, o.timeout) : null;
+      if (o.timeout) fadeOut(c.cue, o.timeout);
       let over = false;
       const finish = v => { if (over) return; over = true; c.hit.remove(); c.cue.remove(); fade && (v === 'timeout' ? fade.restore() : fade.cancel()); res(v); };
       const done = e => { e && e.preventDefault(); if (!o.silent) A.tapNote(); finish(); };
       c.hit.addEventListener('pointerdown', done, { once: true });
       c.hit.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') done(e); });
-      if (o.follow) { const tr = () => { if (over) return; const [fx, fy] = o.follow(); c.hit.setAttribute('cx', fx); c.hit.setAttribute('cy', fy); requestAnimationFrame(tr); }; tr(); }
+      if (o.follow) { const tr = () => { if (over) return; const [fx, fy] = o.follow(); for (const n of [c.hit, c.cue]) { n.setAttribute('cx', fx); n.setAttribute('cy', fy); } requestAnimationFrame(tr); }; tr(); }
       focusSoon(c.hit);
       if (AUTO) { const k = o.timeout ? autoNext() : 0; if (k !== 9) setTimeout(() => done(), 260); }
       if (o.timeout) setTimeout(() => finish('timeout'), T(o.timeout));
@@ -301,8 +293,9 @@ export class Pane {
   choose(opts, o = {}) {
     mark('choose', opts.map(q => q[3]).join(' | '));
     return new Promise(res => {
-      const cs = opts.map(([x, y, r = 46, label, target]) => { const c = this._cue(x, y, Math.max(r, 50), false, target); if (label) c.hit.setAttribute('aria-label', label); return c; });
+      const cs = opts.map(([x, y, r = 46, label]) => { const c = this._cue(x, y, r); if (label) c.hit.setAttribute('aria-label', label); return c; });
       const fades = o.timeout ? opts.map(q => q[4] && fadeOut(q[4], o.timeout)).filter(Boolean) : [];
+      if (o.timeout) cs.forEach(c => fadeOut(c.cue, o.timeout));
       let over = false;
       const pick = i => { if (over) return; over = true; cs.forEach(c => { c.hit.remove(); c.cue.remove(); }); fades.forEach(f => i >= 0 ? f.cancel() : f.restore()); if (i >= 0) A.tapNote(); res(i); };
       cs.forEach((c, i) => {

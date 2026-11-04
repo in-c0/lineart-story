@@ -22,8 +22,8 @@ are choices. They meet, the line between them dissolves, and life gets busy.
 - About 4–6 minutes. Replay to walk another path.
 
 ## Controls
-Touch the thing in the scene: a finger, a ball, a door, a hand. What you can touch breathes a little;
-if you wait, it slowly fades and the moment passes. Keyboard: `Tab` to focus, `Enter` / `Space` to act,
+Touch inside the slowly turning dashed ring: a finger, a ball, a door, a hand. If you wait, the ring
+and the thing inside it slowly fade and the moment passes. Keyboard: `Tab` to focus, `Enter` / `Space` to act,
 arrow keys to move between choices. Headphones recommended.
 
 ## Tech
