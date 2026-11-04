@@ -65,3 +65,23 @@ What changed in v2, in the order it ranked them:
 The swing scene was rebuilt first and re-tested three times: shorter ropes so the arc reads,
 the body follows the swing a beat late, she reaches, misses and drops her head, he looks up too late,
 then a close shot for the touch.
+
+## Round 2 (feedback: too few choices, too much waiting, too predictable)
+- **Letting a moment pass is a choice.** Every choice and most touches wait about 8 seconds. The
+  things you could touch slowly lose their ink; if you don't act, that leads to its own outcome
+  (the baby's hand closes on nothing and she sleeps, her mother walks on and turns back, he picks
+  the umbrella up himself, the cup goes cold, the phone rings out and she was asleep...).
+- **Two clocks.** Before they meet, each half runs its own life with its own scenes and timing
+  (jittered every playthrough). He sleeps and his half goes dark while she graduates. Choices can
+  come up on both sides at once, and you can't always attend to both.
+- **They can miss each other.** At the meeting you can pick up what the wind took, walk on, or
+  let it pass. Walking on leads to separate years, her mother alone, and a second chance at the
+  line between their halves years later, or never.
+- **More choices**: the finger, the mother's hand or the snowman, the cap or the quiet one,
+  shoes / books / the window, the ball or the dog, stay / go / the doorstep, the umbrella,
+  her hand on the swing, the window or the dog at home, the door or the table (each side),
+  her mother's hand, whether he goes with her, the phone, the photo, their hands, the other cup.
+- Passive time cut: about 3.5 minutes for an attentive player (was about 6), ~20 moments
+  (was 14), longest stretch without one about 25 s (was 82 s).
+- Fixes: hand targets can be body-relative (the umbrella arm), feet stay planted when knees bend,
+  hands sit low on the swing ropes, the swing slows while she waits so her hand is easy to touch.

@@ -34,7 +34,7 @@ async function title() {
   A.note(64, .12, 4);
   t.classList.remove('in');
   await B.clear(1400);
-  await card(['There is no save system in this game.', 'Once a choice is made, it cannot be revoked.', 'But you can decide what to do next.'], { step: AUTO ? 100 : 2300, hold: AUTO ? 100 : 1600 });
+  await card(['There is no save system in this game.', 'Once a choice is made, it cannot be revoked.', 'But you can decide what to do next.'], { step: AUTO ? 100 : 1500, hold: AUTO ? 100 : 700 });
   await B.tap(400, 760, 22, { label: 'continue' });
   await clearCard(1400);
   both.classList.remove('on'); stage.style.setProperty('--seam', 1);

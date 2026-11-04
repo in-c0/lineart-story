@@ -8,6 +8,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const ease = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
 export const POSES = {
+  crouch: { spine: 38, neck: 8, hN: 95, kN: 125, hF: 80, kF: 110 },
   stand: { spine: 1, neck: 4, head: 2, sN: 4, eN: 8, sF: -3, eF: 6, hN: 2, kN: 2, hF: -2, kF: 1, bob: 0 },
   sit: { spine: -2, neck: 6, head: 4, sN: 18, eN: 30, sF: 14, eF: 30, hN: 86, kN: 84, hF: 80, kF: 88, bob: 0 },
 };
@@ -25,7 +26,7 @@ export class Figure {
   }
   get h() { return this.o.h; }
   // ---------- skeleton ----------
-  joints(p = this.p) {
+  joints(p = this.p, drop = 0) {
     const h = this.o.h, f = p.f, k = this.o.kind;
     const C = k === 'child', O = k === 'old';
     const L = {
@@ -33,13 +34,13 @@ export class Figure {
       up: h * .165, fore: h * .15, thigh: h * (C ? .22 : .235), shin: h * (C ? .21 : .225), foot: h * .075,
     };
     const pelvisH = L.thigh + L.shin + h * .025;
-    const P = [p.x, p.py != null ? p.py : p.y - pelvisH + (p.bob || 0)];
-    const sp = (p.spine + (O ? 12 : 0)) * D;
+    const P = [p.x, p.py != null ? p.py : p.y - pelvisH + (p.bob || 0) + drop];
+    const sp = (p.spine + (O ? 6 : 0)) * D;
     const up = a => [Math.sin(a) * f, -Math.cos(a)];        // 0 = up
     const dn = a => [Math.sin(a) * f, Math.cos(a)];         // 0 = down
     const add = (A, v, s) => [A[0] + v[0] * s, A[1] + v[1] * s];
     const Ch = add(P, up(sp), L.torso);
-    const na = sp + (p.neck + (O ? 10 : 0)) * D;
+    const na = sp + (p.neck + (O ? 6 : 0)) * D;
     const N = add(Ch, up(na), L.neck);
     const ha = na + (p.head || 0) * D;
     const H = add(N, up(ha), L.headRy * .92);
@@ -49,10 +50,14 @@ export class Figure {
       if (tgt) return ik(S, tgt, L.up, L.fore, f);
       const E = add(S, dn(s * D), L.up); return [E, add(E, dn((s + e) * D), L.fore)];
     };
-    const [EN, WN] = arm(p.sN, p.eN, p.handN);
+    // holdN: hand target relative to the shoulder (x toward the facing side), so it travels with the body
+    const rel = q => q && [S[0] + f * q[0] * h, S[1] + q[1] * h];
+    const [EN, WN] = arm(p.sN, p.eN, p.handN || rel(p.holdN));
     const [EF, WF] = arm(p.sF, p.eF, p.handF);
     const leg = (hp, kn) => { const K = add(P, dn(hp * D), L.thigh); const A = add(K, dn((hp - kn) * D), L.shin); return [K, A]; };
     const [KN, AN] = leg(p.hN, p.kN), [KF, AF] = leg(p.hF, p.kF);
+    // standing figures keep their feet on the ground: bent knees lower the hips instead of lifting the feet
+    if (p.py == null && !drop) { const lift = p.y - Math.max(AN[1], AF[1]) - h * .025 - (p.bob || 0); if (lift > .5) return this.joints(p, lift); }
     return { L, P, Ch, N, H, ha, S, EN, WN, EF, WF, KN, AN, KF, AF, f, sp, up, dn, add };
   }
   // ---------- strokes from the skeleton ----------
@@ -93,7 +98,7 @@ export class Figure {
     leg(J.KF, J.AF, FAR, wf, dress);
     tube([J.S, J.EF, J.WF], [h * .027, h * .022, h * .016], FAR, wf); hand(J.EF, J.WF, FAR, wf);
     // torso contour: back line and front line along the spine axis
-    const curl = (p.curl ?? .35) + (this.o.kind === 'old' ? .6 : 0);
+    const curl = (p.curl ?? .35) + (this.o.kind === 'old' ? .35 : 0);
     const ax = (t, off) => { const base = add(P, up(sp), L.torso * t); const bow = -Math.sin(Math.PI * Math.min(1, t)) * h * .018 * curl; return [base[0] + fr[0] * (off + bow), base[1] + fr[1] * (off + bow)]; };
     const back = [ax(1.13, -h * .02), ax(1.02, -h * .045), ax(.86, -h * .072), ax(.55, -h * .06), ax(.22, -h * .07), ax(0, -h * .078)];
     const fron = [ax(1.12, h * .03), ax(1.0, h * .05), ax(.8, h * .082), ax(.5, h * .066), ax(.2, h * .074), ax(0, h * .08)];
@@ -199,7 +204,7 @@ export class Figure {
         this.p.x = x0 + dx * e;
         this.p.hN = amp * Math.sin(ph); this.p.hF = -amp * Math.sin(ph);
         this.p.kN = 6 + 30 * v * Math.max(0, Math.cos(ph)); this.p.kF = 6 + 30 * v * Math.max(0, -Math.cos(ph));
-        if (!this.p.handN) { this.p.sN = -15 * sway * v * Math.sin(ph); this.p.eN = 12 + 8 * v; }
+        if (!this.p.handN && !this.p.holdN) { this.p.sN = -15 * sway * v * Math.sin(ph); this.p.eN = 12 + 8 * v; }
         if (!this.p.handF) { this.p.sF = 15 * sway * v * Math.sin(ph); this.p.eF = 12 + 8 * v; }
         this.p.bob = -Math.abs(Math.cos(ph)) * h * .016 * v;
         this.p.spine = (o.spine ?? 3) + 2 * v;
@@ -208,7 +213,7 @@ export class Figure {
         this._sg = sg;
         o.onStep && o.onStep(this);
         this.render();
-        k < 1 ? requestAnimationFrame(step) : (this.set({ ...POSES.stand, handN: this.p.handN, handF: this.p.handF, spine: o.spine ?? 1 }), res());
+        k < 1 ? requestAnimationFrame(step) : (this.set({ ...POSES.stand, handN: this.p.handN, handF: this.p.handF, holdN: this.p.holdN, spine: o.spine ?? 1 }), res());
       };
       requestAnimationFrame(step);
     });

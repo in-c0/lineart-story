@@ -6,7 +6,8 @@ export const NS = 'http://www.w3.org/2000/svg';
 const Q = new URLSearchParams(location.search);
 export const SPEED = Math.max(0.1, +Q.get('speed') || 1);
 export const AUTO = Q.has('auto');
-const IDLE = Q.has('idle'); // test: leave optional moments untouched
+// test hook: ?auto=0,1,9 picks options in order; 9 lets the moment pass
+export const autoNext = () => autoPicks.length ? autoPicks.shift() : 0;
 const autoPicks = (Q.get('auto') || '').split(',').filter(Boolean).map(Number);
 export const T = ms => ms / SPEED;
 export const sleep = ms => new Promise(r => setTimeout(r, T(ms)));
@@ -54,6 +55,16 @@ export function arc(cx, cy, rx, ry, a0 = 0, a1 = 360, step = 24) {
 }
 
 let maskN = 0;
+// a choice that is about to pass: the thing slowly loses its ink
+function fadeOut(g, ms) {
+  const o = +getComputedStyle(g).opacity || 1;
+  const a = g.animate([{ opacity: o }, { opacity: o, offset: .35 }, { opacity: o * .28 }], { duration: T(ms), fill: 'forwards', easing: 'ease-in' });
+  // when the moment passes the thing comes back, quietly
+  const restore = () => { const now = +getComputedStyle(g).opacity; a.cancel(); g.animate([{ opacity: now }, { opacity: o }], { duration: T(700), easing: 'ease-out' }); };
+  return { cancel: () => a.cancel(), restore };
+}
+// test log: when the game starts waiting on the player (real-time ms, speed-corrected)
+export function mark(kind, label) { (window.__inputs ||= []).push({ kind, label, t: performance.now() * SPEED }); }
 function linSample(pts, closed) {
   const P = closed ? pts.concat([pts[0]]) : pts, out = [];
   for (let i = 0; i < P.length - 1; i++) { const [x0, y0] = P[i], [x1, y1] = P[i + 1]; const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0) / 12)); for (let k = 0; k < n; k++) out.push([x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n]); }
@@ -268,33 +279,38 @@ export class Pane {
     const obs = new MutationObserver(() => { if (!hit.isConnected) { stop(); obs.disconnect(); } }); obs.observe(this.ui, { childList: true });
     return { hit, cue, x, y, r };
   }
-  // wait for one tap at (x,y). label is for screen readers only
+  // wait for one tap at (x,y). With o.timeout the moment can pass: the target fades and 'timeout' is returned.
   tap(x, y, r = 40, o = {}) {
+    mark('tap', o.label);
     return new Promise(res => {
-      const c = this._cue(x, y, r, o.white, o.target);
+      const c = this._cue(x, y, Math.max(r, 50), o.white, o.target);
       if (o.label) c.hit.setAttribute('aria-label', o.label);
-      const done = e => { e && e.preventDefault(); cleanup(); if (!o.silent) A.tapNote(); res(); };
-      const key = e => { if (e.key === 'Enter' || e.key === ' ') done(e); };
-      const cleanup = () => { c.hit.remove(); c.cue.remove(); };
+      const fade = o.timeout && o.target ? fadeOut(o.target, o.timeout) : null;
+      let over = false;
+      const finish = v => { if (over) return; over = true; c.hit.remove(); c.cue.remove(); fade && (v === 'timeout' ? fade.restore() : fade.cancel()); res(v); };
+      const done = e => { e && e.preventDefault(); if (!o.silent) A.tapNote(); finish(); };
       c.hit.addEventListener('pointerdown', done, { once: true });
-      c.hit.addEventListener('keydown', key);
+      c.hit.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') done(e); });
+      if (o.follow) { const tr = () => { if (over) return; const [fx, fy] = o.follow(); c.hit.setAttribute('cx', fx); c.hit.setAttribute('cy', fy); requestAnimationFrame(tr); }; tr(); }
       focusSoon(c.hit);
-      if (AUTO && !(IDLE && o.timeout)) setTimeout(() => c.hit.isConnected && done(), 260);
-      if (o.timeout) setTimeout(() => { if (c.hit.isConnected) { cleanup(); res('timeout'); } }, T(o.timeout));
+      if (AUTO) { const k = o.timeout ? autoNext() : 0; if (k !== 9) setTimeout(() => done(), 260); }
+      if (o.timeout) setTimeout(() => finish('timeout'), T(o.timeout));
     });
   }
-  // two or more targets; returns the chosen index (or -1 on timeout)
+  // two or more targets; returns the chosen index, or -1 when the moment passes (o.timeout)
   choose(opts, o = {}) {
+    mark('choose', opts.map(q => q[3]).join(' | '));
     return new Promise(res => {
-      const cs = opts.map(([x, y, r = 46, label, target]) => { const c = this._cue(x, y, r, false, target); if (label) c.hit.setAttribute('aria-label', label); return c; });
+      const cs = opts.map(([x, y, r = 46, label, target]) => { const c = this._cue(x, y, Math.max(r, 50), false, target); if (label) c.hit.setAttribute('aria-label', label); return c; });
+      const fades = o.timeout ? opts.map(q => q[4] && fadeOut(q[4], o.timeout)).filter(Boolean) : [];
       let over = false;
-      const pick = i => { if (over) return; over = true; cs.forEach(c => { c.hit.remove(); c.cue.remove(); }); if (i >= 0) A.tapNote(); res(i); };
+      const pick = i => { if (over) return; over = true; cs.forEach(c => { c.hit.remove(); c.cue.remove(); }); fades.forEach(f => i >= 0 ? f.cancel() : f.restore()); if (i >= 0) A.tapNote(); res(i); };
       cs.forEach((c, i) => {
         c.hit.addEventListener('pointerdown', e => { e.preventDefault(); pick(i); });
         c.hit.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') pick(i); if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { cs[(i + (e.key === 'ArrowRight' ? 1 : cs.length - 1)) % cs.length].hit.focus(); } });
       });
       focusSoon(cs[0].hit);
-      if (AUTO) setTimeout(() => pick(autoPicks.length ? autoPicks.shift() % opts.length : 0), 300);
+      if (AUTO) { const k = autoNext(); if (k !== 9) setTimeout(() => pick(k % opts.length), 300); }
       if (o.timeout) setTimeout(() => pick(-1), T(o.timeout));
     });
   }

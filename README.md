@@ -17,7 +17,9 @@ are choices. They meet, the line between them dissolves, and life gets busy.
 - A half of the screen goes dark when that person is asleep, unconscious, or gone.
 - Choices change where they meet, whether they drift apart, who is there when it matters,
   and how the last snowfall turns gold. Separation is not a bad ending.
-- 10–15 minutes. Replay to walk another path.
+- Letting a moment pass (about 8 seconds) is a choice too.
+- Before they meet, each half runs on its own clock. They can miss each other.
+- About 4–6 minutes. Replay to walk another path.
 
 ## Controls
 Tap or click the faint rotating ring. A few moments ask you to drag. Keyboard: `Tab` to focus,
@@ -30,8 +32,8 @@ written with the Web Audio API; it thickens over the life and opens up at the go
 
 Run locally: `python3 -m http.server` in this folder, then open `http://localhost:8000`.
 
-Test hooks: `?speed=8` plays faster; `?auto=0,1,0,0` auto-plays with those choices;
-add `&idle` to leave the optional moments untouched.
+Test hooks: `?speed=8` plays faster; `?auto=0,1,9` auto-plays with those choices in order
+(9 lets the moment pass); `?ep=meeting&place=city` plays one episode.
 
 ## Origin
 Built from the design notes *A simple game about life* (with *Director's thoughts* and *game*).

@@ -1,5 +1,5 @@
 // The swing. Two people, out of step. One reaches and misses, looks away. You help, once.
-import { el, T, SPEED, AUTO } from './engine.js';
+import { el, T, SPEED, AUTO, mark, autoNext } from './engine.js';
 import { Figure } from './rig.js';
 import { sample, outline } from './brush.js';
 import * as A from './audio.js';
@@ -29,12 +29,15 @@ export async function swingScene(P) {
   let thc = 0, th0 = 0, phc = 0, hamp = 2.2 * D, gapK = 0, settle = 0;
   let mode = 'free', reachA = 0, reachB = 0, hold = null, pressed = false, done = false, hint = 0;
   let lookA = 0, lookB = 0;                 // head: + drops the head, - lifts it
-  const restA = () => [a.x + 2, SEAT - H * .33], restB = () => [b.x - 2, SEAT - H * .33];
+  const restA = () => [a.x + 2, SEAT - H * .14], restB = () => [b.x - 2, SEAT - H * .14];   // hands low on the rope, elbows easy
   let creakSide = 0;
   const frame = now => {
     const dt = Math.min(50, now - last) * SPEED; last = now; t += dt;
     phase += dt / PERIOD * Math.PI * 2;
-    if (pressed && lagB > 0) lagB = Math.max(0, lagB - dt / 3000 * .38);
+    // while she waits the swing nearly stops, so her hand is easy to reach; then it picks up again
+    const want = mode === 'wait' ? 2.5 * D : 9.5 * D;
+    if (mode !== 'held') amp += (want - amp) * Math.min(1, dt / (mode === 'wait' ? 900 : 1600));
+    if (pressed && lagB > 0) lagB = Math.max(0, lagB - dt / 1800 * .38);
     a.th = amp * Math.sin(phase);
     b.th = -amp * .94 * Math.sin(phase - lagB * Math.PI * 2);
     if (mode === 'held') {
@@ -89,36 +92,39 @@ export async function swingScene(P) {
   // ---- the scene ----
   P.camera(60, 140, 680, 560, 0);
   A.music(2);
-  await Promise.all([a, b].map(s => s.g.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(1200), fill: 'forwards' }).finished));
-  await wait(PERIOD * .7);
+  await Promise.all([a, b].map(s => s.g.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(900), fill: 'forwards' }).finished));
   // she reaches; he is somewhere else in his swing
   await rising();
-  await tween(() => reachA, v => reachA = v, .9, 800);
-  await wait(400);
-  await tween(() => reachA, v => reachA = v, 0, 900);
+  await tween(() => reachA, v => reachA = v, .9, 700);
+  await wait(300);
+  await tween(() => reachA, v => reachA = v, 0, 700);
   // she looks away. he looks at her, too late.
-  await Promise.all([tween(() => lookA, v => lookA = v, 18, 700), (async () => { await wait(500); await tween(() => lookB, v => lookB = v, -7, 900); })()]);
-  await wait(900);
-  await Promise.all([tween(() => lookA, v => lookA = v, 0, 900), tween(() => lookB, v => lookB = v, 0, 1200)]);
-  // she tries once more, halfway, and waits. touch her hand.
-  await rising();
-  await tween(() => reachA, v => reachA = v, .55, 900);
+  await Promise.all([tween(() => lookA, v => lookA = v, 18, 600), (async () => { await wait(400); await tween(() => lookB, v => lookB = v, -7, 700); })()]);
+  await wait(500);
+  await tween(() => lookA, v => lookA = v, 0, 700);
+  // she slows her swing and holds her hand out, halfway. touch it, or let the moment pass.
   mode = 'wait';
-  await new Promise(res => {
-    const hit = el('circle', { r: 60, class: 'hit', tabindex: 0, role: 'button', 'aria-label': 'her hand' }, P.ui);
+  await tween(() => reachA, v => reachA = v, .55, 900);
+  mark('tap', 'her hand (swing)');
+  const res = await new Promise(res => {
+    const hit = el('circle', { r: 95, class: 'hit', tabindex: 0, role: 'button', 'aria-label': 'her hand' }, P.ui);
     const follow = () => { if (!hit.isConnected) return; const w2 = world(a, a.fig.joints().WN); hit.setAttribute('cx', w2[0]); hit.setAttribute('cy', w2[1]); requestAnimationFrame(follow); };
     follow();
-    const go = e => { e && e.preventDefault(); pressed = true; hit.remove(); res(); };
-    hit.addEventListener('pointerdown', go, { once: true });
-    hit.addEventListener('keydown', e => (e.key === 'Enter' || e.key === ' ') && go(e));
-    if (AUTO) setTimeout(go, 300);
+    let over = false;
+    const go = v => { if (over) return; over = true; hit.remove(); res(v); };
+    hit.addEventListener('pointerdown', e => { e.preventDefault(); go('her'); }, { once: true });
+    hit.addEventListener('keydown', e => (e.key === 'Enter' || e.key === ' ') && go('her'));
+    if (AUTO) { const k = autoNext(); if (k !== 9) setTimeout(() => go('her'), 300); }
+    setTimeout(() => go('him'), T(8000));
   });
-  mode = 'free'; A.tapNote();
-  tween(() => lookB, v => lookB = v, -4, 1200);
+  pressed = true; mode = 'free';
+  if (res === 'her') { A.tapNote(); tween(() => lookB, v => lookB = v, -4, 900); }
+  else { tween(() => reachA, v => reachA = v, 0, 900); tween(() => lookA, v => lookA = v, 16, 900); }   // she gives up; he will have to
   await when(() => lagB <= 0);
   await rising();
   P.camera(255, 300, 290, 300, 1100);          // close: hands and shoulders fill the frame
-  await Promise.all([tween(() => reachA, v => reachA = v, 1, 800), (async () => { await wait(120); await tween(() => reachB, v => reachB = v, 1, 800); })()]);
+  if (res === 'her') await Promise.all([tween(() => reachA, v => reachA = v, 1, 800), (async () => { await wait(120); await tween(() => reachB, v => reachB = v, 1, 800); })()]);
+  else { await tween(() => reachB, v => reachB = v, 1, 900); await wait(350); tween(() => lookA, v => lookA = v, 0, 500); await tween(() => reachA, v => reachA = v, 1, 600); }
   await apex();
   // the top of the swing: they stop there, a hand's width apart
   const sa = world(a, a.fig.joints().S), sb = world(b, b.fig.joints().S);
@@ -129,7 +135,8 @@ export async function swingScene(P) {
   await tween(() => gapK, v => gapK = v, 1, 300);       // fingertips
   A.chord(.08); P.washTo('gold', .5, 5000);
   tween(() => lookA, v => lookA = v, 9, 1600);
-  P.camera(280, 330, 240, 250, 6000);
-  await wait(5500);
+  P.camera(280, 330, 240, 250, 4000);
+  await wait(2300);
   done = true;
+  return res;
 }
